@@ -3,7 +3,12 @@ using System.Net.Http;
 namespace Miminus.Sys;
 
 /// <summary>Where a check has got to.</summary>
-public enum UpdateState { Idle, Checking, UpToDate, Available, Failed }
+public enum UpdateState
+{
+    Idle, Checking, UpToDate, Available,
+    Downloading, Verifying, Extracting, ReadyToRestart,
+    Failed,
+}
 
 /// <summary>What the published manifest says about the newest build.</summary>
 public sealed class UpdateInfo
@@ -16,6 +21,14 @@ public sealed class UpdateInfo
     public string Url = "";
     public string Download = "";
     public string Notes = "";
+
+    /// <summary>Archive the update centre can actually install, as opposed to
+    /// <see cref="Download"/>, which is the page a person would open.</summary>
+    public string Package = "";
+
+    /// <summary>Hex SHA-256 of the package, checked before anything is
+    /// extracted. Without it the package is refused.</summary>
+    public string Sha256 = "";
 
     /// <summary>True when this came from the copy shipped beside the executable
     /// rather than from the repository.</summary>
@@ -40,7 +53,7 @@ public sealed class UpdateService
     public const string ManifestFile = "latest.txt";
 
     /// <summary>The version this build reports as installed.</summary>
-    public const string InstalledVersion = "7.0";
+    public const string InstalledVersion = "7.1";
 
     public static string RepositoryUrl => "https://github.com/" + Repository;
 
@@ -61,6 +74,10 @@ public sealed class UpdateService
     static readonly HttpClient Http = CreateClient();
 
     volatile Result _incoming;
+
+    /// <summary>Which step the background task has reached, so the window can
+    /// name what is happening without the worker touching UI state.</summary>
+    volatile UpdateState _stage;
     Task _running;
 
     public UpdateState State { get; private set; } = UpdateState.Idle;
@@ -75,7 +92,8 @@ public sealed class UpdateService
     /// balloon appears a single time per finding.</summary>
     public bool Announced;
 
-    public bool Busy => State == UpdateState.Checking;
+    public bool Busy => State is UpdateState.Checking or UpdateState.Downloading
+        or UpdateState.Verifying or UpdateState.Extracting;
 
     static HttpClient CreateClient()
     {
@@ -121,6 +139,178 @@ public sealed class UpdateService
         }
     }
 
+    // ---- installing -------------------------------------------------------
+
+    /// <summary>Where the package is downloaded and unpacked. Beside the
+    /// executable rather than in TEMP, so the swap that follows is a move
+    /// within one volume and a failed run leaves evidence behind.</summary>
+    public static string StagingRoot => Path.Combine(AppContext.BaseDirectory, "update");
+
+    /// <summary>Folder holding the unpacked build, once one is ready.</summary>
+    public string Staging { get; private set; }
+
+    /// <summary>Bytes fetched so far, and the total when the server declares
+    /// one, for the progress readout.</summary>
+    public long Fetched { get; private set; }
+    public long Total { get; private set; }
+
+    /// <summary>Downloads the package named by the manifest, checks it against
+    /// the published hash, and unpacks it ready to be installed. Does nothing
+    /// unless an update is actually on offer.</summary>
+    public void BeginDownload()
+    {
+        if (State != UpdateState.Available || Latest == null) return;
+        if (string.IsNullOrEmpty(Latest.Package))
+        {
+            State = UpdateState.Failed;
+            Error = L.T("update.no_package");
+            return;
+        }
+
+        var info = Latest;
+        State = _stage = UpdateState.Downloading;
+        Progress = 0;
+        Staging = null;
+        Fetched = Total = 0;
+        Error = null;
+        _incoming = null;
+        _running = Task.Run(() => Fetch(info));
+    }
+
+    async Task Fetch(UpdateInfo info)
+    {
+        string archive = null;
+        try
+        {
+            Directory.CreateDirectory(StagingRoot);
+            archive = Path.Combine(StagingRoot, "package.zip");
+
+            string hash = await DownloadAndHash(info.Package, archive).ConfigureAwait(false);
+
+            // A package with no published hash, or the wrong one, is not
+            // unpacked: this is code that is about to replace the running
+            // program.
+            _stage = UpdateState.Verifying;
+            if (string.IsNullOrWhiteSpace(info.Sha256))
+                throw new InvalidOperationException(L.T("update.no_checksum"));
+
+            if (!hash.Equals(info.Sha256.Trim(), StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException(L.F("update.checksum_mismatch", hash));
+
+            _stage = UpdateState.Extracting;
+            string unpacked = Path.Combine(StagingRoot, "staging");
+            if (Directory.Exists(unpacked)) Directory.Delete(unpacked, true);
+            System.IO.Compression.ZipFile.ExtractToDirectory(archive, unpacked);
+            File.Delete(archive);
+
+            string root = FindBuild(unpacked);
+            if (root == null) throw new InvalidOperationException(L.T("update.package_has_no_build"));
+
+            Staging = root;
+            _incoming = new Result(UpdateState.ReadyToRestart, info, null);
+        }
+        catch (Exception ex)
+        {
+            try { if (archive != null && File.Exists(archive)) File.Delete(archive); } catch { }
+            _incoming = new Result(UpdateState.Failed, info, ex.Message);
+        }
+    }
+
+    /// <summary>Streams the package to disk, hashing as it goes so the file is
+    /// read once rather than twice.</summary>
+    async Task<string> DownloadAndHash(string url, string destination)
+    {
+        using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead)
+                                       .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        Total = response.Content.Headers.ContentLength ?? 0;
+
+        using var sha = System.Security.Cryptography.SHA256.Create();
+        using var source = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+        using var file = File.Create(destination);
+
+        var buffer = new byte[64 * 1024];
+        long fetched = 0;
+        int read;
+        while ((read = await source.ReadAsync(buffer).ConfigureAwait(false)) > 0)
+        {
+            sha.TransformBlock(buffer, 0, read, null, 0);
+            await file.WriteAsync(buffer.AsMemory(0, read)).ConfigureAwait(false);
+            fetched += read;
+            Fetched = fetched;
+        }
+
+        sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+        return Convert.ToHexString(sha.Hash);
+    }
+
+    /// <summary>Finds the folder inside the unpacked package that holds the
+    /// executable — archives usually wrap everything in one directory.</summary>
+    static string FindBuild(string root)
+    {
+        if (File.Exists(Path.Combine(root, "MiminusOS.exe"))) return root;
+
+        foreach (string dir in Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories))
+            if (File.Exists(Path.Combine(dir, "MiminusOS.exe")))
+                return dir;
+
+        return null;
+    }
+
+    /// <summary>Puts the unpacked build in place and starts it.
+    ///
+    /// The running program cannot overwrite its own files, so a one-shot script
+    /// does it: wait for this process to end, copy the staged build over the
+    /// installation, start it again, and delete itself. The caller is expected
+    /// to shut the OS down immediately afterwards.</summary>
+    public bool Install(out string error)
+    {
+        error = null;
+        if (State != UpdateState.ReadyToRestart || Staging == null || !Directory.Exists(Staging))
+        {
+            error = L.T("update.nothing_staged");
+            return false;
+        }
+
+        try
+        {
+            string install = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
+            string exe = Path.Combine(install, "MiminusOS.exe");
+            string script = Path.Combine(StagingRoot, "install.cmd");
+            int pid = Environment.ProcessId;
+
+            File.WriteAllText(script, $"""
+                @echo off
+                rem Written by the МИМИНУС update centre. Safe to delete.
+                :wait
+                tasklist /FI "PID eq {pid}" | find "{pid}" >nul
+                if not errorlevel 1 (
+                    ping -n 2 127.0.0.1 >nul
+                    goto wait
+                )
+                xcopy /E /I /Y "{Staging}" "{install}" >nul
+                rd /s /q "{Path.Combine(StagingRoot, "staging")}" 2>nul
+                start "" "{exe}"
+                del "%~f0"
+                """, System.Text.Encoding.Default);
+
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = "/c \"" + script + "\"",
+                CreateNoWindow = true,
+                UseShellExecute = false,
+                WorkingDirectory = install,
+            });
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
     /// <summary>Called once per frame: advances the progress bar and publishes a
     /// finished result to the UI thread.</summary>
     public void Poll(float dt)
@@ -129,6 +319,15 @@ public sealed class UpdateService
             // Creeps towards, but never reaches, full: the last step belongs to
             // the answer actually arriving.
             Progress = MathF.Min(0.92f, Progress + dt * 0.55f);
+        else if (State is UpdateState.Downloading or UpdateState.Verifying or UpdateState.Extracting)
+        {
+            State = _stage;
+            // Real progress while bytes are arriving and the server declared a
+            // length; the unpacking that follows has none to report.
+            Progress = State == UpdateState.Downloading && Total > 0
+                ? Math.Clamp(Fetched / (float)Total, 0, 1)
+                : MathF.Min(0.97f, Progress + dt * 0.4f);
+        }
 
         var result = _incoming;
         if (result == null) return;
@@ -198,6 +397,8 @@ public sealed class UpdateService
             Size = Get("size"),
             Url = Get("url").Length != 0 ? Get("url") : RepositoryUrl,
             Download = Get("download"),
+            Package = Get("package"),
+            Sha256 = Get("sha256"),
             Notes = Get("notes"),
         };
     }

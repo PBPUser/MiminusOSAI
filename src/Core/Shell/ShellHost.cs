@@ -52,6 +52,11 @@ public sealed class ShellHost : IDisposable
     bool _networkBalloonShown;
     bool _updateCheckStarted;
 
+    /// <summary>Set once the staged build is in place and the shutdown that
+    /// follows is a restart rather than a power-off. The host watches it.</summary>
+    public bool ExitRequested { get; private set; }
+    bool _restartPending;
+
     readonly List<string> _postLines = new();
     int _postShown;
     double _postNext;
@@ -355,7 +360,12 @@ public sealed class ShellHost : IDisposable
     void DrawShuttingDown(UiContext c)
     {
         DimOverlay(c, L.T("shell.shutting_down"));
-        if (Elapsed(c) > 2.6) SetPhase(ShellPhase.PoweredOff, c);
+        if (Elapsed(c) <= 2.6) return;
+
+        // An update restart ends the process instead of parking on the
+        // "safe to turn off" screen: the installer is waiting for it to exit.
+        if (_restartPending) ExitRequested = true;
+        else SetPhase(ShellPhase.PoweredOff, c);
     }
 
     void DimOverlay(UiContext c, string message)
@@ -420,6 +430,21 @@ public sealed class ShellHost : IDisposable
         Audio.StopMusic();
         Audio.Play(Sfx.Shutdown, 0.95f);
         SetPhase(ShellPhase.ShuttingDown, c);
+    }
+
+    /// <summary>Puts the downloaded build in place and restarts into it. The
+    /// shutdown sequence plays first, which is also the delay the installer
+    /// needs: it waits for this process to go away before copying over it.</summary>
+    public void RestartForUpdate(UiContext c)
+    {
+        if (!Updates.Install(out string error))
+        {
+            MessageBox(c, L.T("update.title"), error, MsgButtons.Ok, IconId.DlgError, null, Sfx.Error);
+            return;
+        }
+
+        _restartPending = true;
+        BeginShutdown(c);
     }
 
     public void ShowShutdownDialog(UiContext c)

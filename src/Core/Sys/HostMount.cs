@@ -166,6 +166,47 @@ public sealed class HostMount
         }
     }
 
+    /// <summary>Renames a mounted file or folder on disk and repoints the node
+    /// and, for a folder, everything already loaded beneath it. Refuses on a
+    /// read-only mount and reports why.</summary>
+    public static bool Rename(VNode node, string newName, out string error)
+    {
+        error = null;
+        if (node.Mount is not { Writable: true })
+        {
+            error = L.T("mount.read_only");
+            return false;
+        }
+
+        string directory = Path.GetDirectoryName(node.HostPath);
+        if (directory == null) { error = L.T("mount.read_only"); return false; }
+
+        string target = Path.Combine(directory, newName);
+        try
+        {
+            if (node.IsContainer) Directory.Move(node.HostPath, target);
+            else File.Move(node.HostPath, target);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+
+        Repoint(node, target);
+        return true;
+    }
+
+    /// <summary>Rewrites the host paths of a moved node and its loaded children,
+    /// which would otherwise still point at the old name.</summary>
+    static void Repoint(VNode node, string hostPath)
+    {
+        node.HostPath = hostPath;
+        foreach (var child in node.Children)
+            if (child.HostPath != null)
+                Repoint(child, Path.Combine(hostPath, Path.GetFileName(child.HostPath)));
+    }
+
     /// <summary>Free and total bytes for the volume backing this mount.</summary>
     public (long free, long total) Space()
     {

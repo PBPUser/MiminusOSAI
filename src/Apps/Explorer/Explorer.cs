@@ -18,6 +18,11 @@ public sealed class ExplorerWindow : OsWindow
     VNode _folder;
     VNode _selected;
 
+    /// <summary>The node being renamed in place, and the text being typed.</summary>
+    VNode _renaming;
+    string _renameText = "";
+
+
     readonly List<VNode> _history = new();
     int _historyIndex = -1;
 
@@ -77,7 +82,8 @@ public sealed class ExplorerWindow : OsWindow
                                            Shell.BuildOpenWithMenu(_ctx, _selected)));
                 items.Add(MenuItem.Sep());
                 items.Add(MenuItem.Of(L.T("explorer.delete"), () => DeleteSelected(_ctx)));
-                items.Add(MenuItem.Of(L.T("explorer.rename"), null, enabled: false));
+                items.Add(MenuItem.Of(L.T("explorer.rename"), () => BeginRename(_selected),
+                                      enabled: VirtualFS.CanRename(_selected)));
                 items.Add(MenuItem.Sep());
                 items.Add(MenuItem.Of(L.T("explorer.properties"),
                     () => Shell.ShowProperties(_ctx, _selected.Name, _selected, _selected.Icon)));
@@ -197,10 +203,12 @@ public sealed class ExplorerWindow : OsWindow
             : count,
             detail, L.T("explorer.my_computer"));
 
-        // Backspace goes up a level, like Explorer.
+        // Backspace goes up a level, like Explorer. The rename box claims the
+        // keyboard while it is open, so none of this fires underneath it.
         if (!c.KeyboardHandled)
         {
-            if (c.In.KeyPressed(Keys.Back)) GoUp(c);
+            if (c.In.KeyPressed(Keys.F2) && _selected != null) BeginRename(_selected);
+            else if (c.In.KeyPressed(Keys.Back)) GoUp(c);
             else if (c.In.KeyPressed(Keys.Delete) && _selected != null) DeleteSelected(c);
             else if (c.In.KeyPressed(Keys.Enter) && _selected != null) Open(_selected);
         }
@@ -381,7 +389,9 @@ public sealed class ExplorerWindow : OsWindow
         {
             y = TaskGroup(c, pane, y, L.T("explorer.file_and_folder_tasks"), new (string, IconId, Action)[]
             {
-                ("task.rename_this_file", IconId.TextFile, () => NotAvailable(c)),
+                (_selected.IsContainer ? "task.rename_this_folder" : "task.rename_this_file",
+                 _selected.IsContainer ? IconId.Folder : IconId.TextFile,
+                 () => BeginRename(_selected)),
                 ("task.move_this_file", IconId.Folder, () => NotAvailable(c)),
                 ("task.copy_this_file", IconId.Folder, () => NotAvailable(c)),
                 ("task.publish_this_file_to_the_web", IconId.Globe, () => NotAvailable(c)),
@@ -600,6 +610,8 @@ public sealed class ExplorerWindow : OsWindow
         bool selected = node == _selected;
         bool hover = c.Hovering(cell);
 
+        if (node == _renaming) { DrawRenameBox(c, node, cell); return; }
+
         switch (_view)
         {
             case ViewMode.Icons:
@@ -721,7 +733,8 @@ public sealed class ExplorerWindow : OsWindow
         items.Add(MenuItem.Of(L.T("explorer.copy"), null, enabled: false));
         items.Add(MenuItem.Sep());
         items.Add(MenuItem.Of(L.T("explorer.delete"), () => DeleteSelected(c)));
-        items.Add(MenuItem.Of(L.T("explorer.rename"), null, enabled: false));
+        items.Add(MenuItem.Of(L.T("explorer.rename"), () => BeginRename(node),
+                              enabled: VirtualFS.CanRename(node)));
         items.Add(MenuItem.Sep());
         items.Add(MenuItem.Of(L.T("explorer.properties"), () => Shell.ShowProperties(c, node.Name, node, node.Icon)));
 
@@ -732,6 +745,74 @@ public sealed class ExplorerWindow : OsWindow
     {
         if (node.IsContainer) { Navigate(node, _ctx); return; }
         Shell.Launch(_ctx, node.Launch, node);
+    }
+
+    // ---- renaming in place ------------------------------------------------
+
+    void BeginRename(VNode node)
+    {
+        if (!VirtualFS.CanRename(node)) return;
+        _selected = node;
+        _renaming = node;
+        _renameText = node.Name;
+    }
+
+    /// <summary>Draws the edit box where the item's name would be, sized to the
+    /// view so the name stays where the eye left it.</summary>
+    void DrawRenameBox(UiContext c, VNode node, Rect cell)
+    {
+        Rect box;
+        switch (_view)
+        {
+            case ViewMode.Icons:
+            {
+                var iconRect = new Rect(cell.X + (cell.W - 32) * 0.5f, cell.Y + 4, 32, 32);
+                DrawNodeIcon(c, node, iconRect);
+                box = new Rect(cell.X + 2, iconRect.Bottom + 2, cell.W - 4, c.F.Ui.Height + 6);
+                break;
+            }
+            case ViewMode.Tiles:
+            {
+                var iconRect = new Rect(cell.X + 6, cell.CenterY - 16, 32, 32);
+                DrawNodeIcon(c, node, iconRect);
+                box = new Rect(iconRect.Right + 6, cell.Y + 6, cell.W - 52, c.F.Ui.Height + 6);
+                break;
+            }
+            case ViewMode.List:
+            {
+                DrawNodeIcon(c, node, new Rect(cell.X + 3, cell.Y + 1, 16, 16));
+                box = new Rect(cell.X + 21, cell.Y, cell.W - 24, cell.H);
+                break;
+            }
+            default:
+            {
+                DrawNodeIcon(c, node, new Rect(cell.X + 3, cell.Y + 1, 16, 16));
+                box = new Rect(cell.X + 21, cell.Y, cell.W * 0.45f - 24, cell.H);
+                break;
+            }
+        }
+
+        switch (W.RenameBox(c, Id + ".rename", box, ref _renameText))
+        {
+            case W.RenameResult.Commit: CommitRename(c); break;
+            case W.RenameResult.Cancel: _renaming = null; break;
+        }
+    }
+
+    void CommitRename(UiContext c)
+    {
+        var node = _renaming;
+        _renaming = null;
+        if (node == null) return;
+
+        if (Shell.Fs.Rename(node, _renameText, out string error))
+        {
+            c.Sound(Sfx.Tick, 0.5f);
+            return;
+        }
+
+        Shell.MessageBox(c, L.T("explorer.rename_failed_title"), error,
+                         MsgButtons.Ok, IconId.DlgError, null, Sfx.Error);
     }
 
     void DeleteSelected(UiContext c)

@@ -214,6 +214,53 @@ public sealed class Desktop
         }
     }
 
+    /// <summary>The icon being renamed in place, and the text being typed.</summary>
+    DesktopIcon _renaming;
+    string _renameText = "";
+
+    void BeginRename(DesktopIcon icon)
+    {
+        if (icon == null) return;
+        // A shortcut or a decorative icon renames its own label; one backed by a
+        // real node renames the node, and so refuses when the node does.
+        if (icon.Node != null && !VirtualFS.CanRename(icon.Node)) return;
+
+        ClearSelection();
+        icon.Selected = true;
+        _renaming = icon;
+        _renameText = icon.Label;
+    }
+
+    void CommitRename(UiContext c)
+    {
+        var icon = _renaming;
+        _renaming = null;
+        if (icon == null) return;
+
+        string name = _renameText?.Trim();
+        if (string.IsNullOrEmpty(name) || name == icon.Label) return;
+
+        if (icon.Node != null)
+        {
+            if (!_shell.Fs.Rename(icon.Node, name, out string error))
+            {
+                _shell.MessageBox(c, L.T("desktop.rename_failed_title"), error,
+                                  MsgButtons.Ok, IconId.DlgError, null, Sfx.Error);
+                return;
+            }
+            // The label follows the node, which no longer follows the language.
+            icon.LabelKey = null;
+            icon.LiteralLabel = icon.Node.Name;
+        }
+        else
+        {
+            icon.LabelKey = null;
+            icon.LiteralLabel = name;
+        }
+
+        c.Sound(Sfx.Tick, 0.5f);
+    }
+
     void DrawIcon(UiContext c, DesktopIcon icon)
     {
         var cell = icon.Bounds;
@@ -224,6 +271,21 @@ public sealed class Desktop
         var labelArea = new Rect(cell.X + 2, iconRect.Bottom + 3, CellW - 4, CellH - IconSize - 8);
 
         bool hover = cell.Contains(c.MouseX, c.MouseY) && !c.MouseHandled;
+
+        if (icon == _renaming)
+        {
+            Graphics.Icons.Draw(c.R, icon.Icon, iconRect);
+            if (icon.Shortcut || icon.Node?.Kind == NodeKind.Shortcut)
+                Graphics.Icons.DrawShortcutOverlay(c.R, iconRect);
+
+            var box = new Rect(labelArea.X, labelArea.Y - 1, labelArea.W, c.F.Ui.Height + 6);
+            switch (W.RenameBox(c, "desktop.rename.box", box, ref _renameText))
+            {
+                case W.RenameResult.Commit: CommitRename(c); break;
+                case W.RenameResult.Cancel: _renaming = null; break;
+            }
+            return;
+        }
 
         // Label wraps to at most two lines and is ellipsised after that.
         var lines = c.F.Small.Wrap(icon.Label, labelArea.W - 4);
@@ -283,7 +345,7 @@ public sealed class Desktop
             if (!string.IsNullOrEmpty(icon.Node?.Tooltip))
                 c.Tooltip(cell, icon.Node.Tooltip);
 
-            HandleIcon(c, icon, cell);
+            if (icon != _renaming) HandleIcon(c, icon, cell);
         }
 
         HandleBackground(c, new Rect(0, 0, c.ScreenW, c.ScreenH - c.Theme.TaskbarHeight));
@@ -365,10 +427,13 @@ public sealed class Desktop
         }
         else _bandRect = default;
 
-        // F5 refreshes; F2 would rename, Delete removes the selection.
+        // F5 refreshes, F2 renames, Delete removes the selection. The rename
+        // box claims the keyboard while it is open, so none of this fires.
         if (!c.KeyboardHandled)
         {
-            if (c.In.KeyPressed(Keys.F5))
+            if (c.In.KeyPressed(Keys.F2))
+                BeginRename(Icons.FirstOrDefault(i => i.Selected));
+            else if (c.In.KeyPressed(Keys.F5))
             {
                 Relayout(c.ScreenW, c.ScreenH);
                 c.Sound(Sfx.Navigate, 0.4f);
@@ -460,7 +525,8 @@ public sealed class Desktop
             var sel = Icons.Where(i => i.Selected).ToList();
             if (sel.Count > 0) DeleteSelected(c, sel);
         }));
-        items.Add(MenuItem.Of(L.T("desktop.rename"), () => c.Sound(Sfx.Click)));
+        items.Add(MenuItem.Of(L.T("desktop.rename"), () => BeginRename(icon),
+                              enabled: icon.Node == null || VirtualFS.CanRename(icon.Node)));
         items.Add(MenuItem.Sep());
         items.Add(MenuItem.Of(L.T("desktop.properties"),
             () => _shell.ShowProperties(c, icon.Label, icon.Node, icon.Icon)));

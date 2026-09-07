@@ -570,6 +570,89 @@ public static class W
         return changed;
     }
 
+    /// <summary>What an in-place rename box wants the caller to do next.</summary>
+    public enum RenameResult { Editing, Commit, Cancel }
+
+    sealed class RenameState { public bool SelectAll = true; public bool Claimed; }
+
+    /// <summary>The box that appears over a name when a folder or file is
+    /// renamed in place.
+    ///
+    /// It behaves the way the shell's own does: it opens with the whole name
+    /// selected so the first character typed replaces it, Enter accepts,
+    /// Escape abandons, and clicking anywhere else accepts as well. Keyboard
+    /// input is claimed while it is open so Delete and Enter do not also reach
+    /// the view underneath.</summary>
+    public static RenameResult RenameBox(UiContext c, string id, Rect r, ref string value)
+    {
+        var t = c.Theme;
+        var st = c.State<RenameState>(id);
+
+        // The box takes focus the frame it appears, and keeps it.
+        if (!st.Claimed) { st.Claimed = true; c.Focus = id; }
+
+        c.R.FillRect(r, t.FieldBack);
+        c.R.DrawRect(r, t.ControlBorderHot);
+        if (c.Hovering(r)) c.Cursor = CursorShape.Text;
+
+        float textY = r.Y + (r.H - c.F.Ui.Height) * 0.5f;
+        var result = RenameResult.Editing;
+
+        if (!c.KeyboardHandled)
+        {
+            foreach (char ch in c.In.TypedChars)
+            {
+                if (ch < ' ') continue;
+                if (st.SelectAll) { value = ""; st.SelectAll = false; }
+                value += ch;
+            }
+
+            if (c.In.KeyPressed(Keys.Back))
+            {
+                if (st.SelectAll) { value = ""; st.SelectAll = false; }
+                else if (value.Length > 0) value = value[..^1];
+            }
+
+            if (c.In.Ctrl && c.In.KeyPressed(Keys.V))
+            {
+                if (st.SelectAll) { value = ""; st.SelectAll = false; }
+                value += Clipboard.GetText().Replace("\r", "").Replace("\n", "");
+            }
+
+            if (c.In.KeyPressed(Keys.Enter)) result = RenameResult.Commit;
+            else if (c.In.KeyPressed(Keys.Escape)) result = RenameResult.Cancel;
+
+            c.KeyboardHandled = true;
+        }
+
+        // A click inside keeps editing and drops the selection; a click outside
+        // finishes, which is what the shell does.
+        if (c.Clicked(r)) st.SelectAll = false;
+        else if (c.In.Pressed(MouseButton.Left) && !r.Contains(c.MouseX, c.MouseY))
+            result = RenameResult.Commit;
+
+        c.R.PushClip(r.Deflate(2, 0, 2, 0));
+        float tw = c.F.Ui.Measure(value);
+        float offset = MathF.Max(0, tw - (r.W - 8));
+        float x = r.X + 3 - offset;
+
+        if (st.SelectAll && value.Length > 0)
+        {
+            c.R.FillRect(new Rect(x, r.Y + 2, tw, r.H - 4), t.Selection);
+            c.F.Ui.Draw(c.R, value, x, textY, t.SelectionText);
+        }
+        else
+        {
+            c.F.Ui.Draw(c.R, value, x, textY, t.Text);
+            if ((c.Time % 1.06) < 0.53)
+                c.R.FillRect(new Rect(x + tw, r.Y + 3, 1.4f, r.H - 6), t.Text);
+        }
+        c.R.PopClip();
+
+        if (result != RenameResult.Editing) c.ForgetState(id);
+        return result;
+    }
+
     // ---- slider and progress --------------------------------------------
 
     sealed class SliderState { public bool Dragging; }

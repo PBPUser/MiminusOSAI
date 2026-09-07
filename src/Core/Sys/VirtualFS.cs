@@ -485,6 +485,56 @@ public sealed class VirtualFS
         => node is { Kind: NodeKind.Folder } &&
            node.Name.Equals("Windows", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>True when a node's name may be edited. The protected nodes —
+    /// the МИ folder, the drives, the special shell places — keep their names,
+    /// and a node under a read-only mount is backed by a real file we have no
+    /// business touching.</summary>
+    public static bool CanRename(VNode node)
+        => node?.Parent != null
+           && !node.Protected
+           && node.Kind is not (NodeKind.Drive or NodeKind.DvdDrive or NodeKind.Removable
+                                or NodeKind.Device)
+           && (node.Mount == null || node.Mount.Writable);
+
+    /// <summary>The characters Windows refuses in a name, which this refuses too
+    /// so a mounted rename cannot fail halfway.</summary>
+    public const string InvalidNameChars = "\\/:*?\"<>|";
+
+    /// <summary>Renames a node, and the real file or folder behind it when it is
+    /// mounted. Returns false with a reason the caller can show.</summary>
+    public bool Rename(VNode node, string newName, out string error)
+    {
+        error = null;
+        newName = newName?.Trim();
+
+        if (!CanRename(node)) { error = L.T("fs.rename_refused"); return false; }
+        if (string.IsNullOrEmpty(newName)) { error = L.T("fs.rename_empty"); return false; }
+
+        if (newName.IndexOfAny(InvalidNameChars.ToCharArray()) >= 0)
+        {
+            error = L.F("fs.rename_invalid_chars", InvalidNameChars);
+            return false;
+        }
+
+        if (newName == node.Name) return true;
+
+        if (node.Parent.Children.Any(sibling => sibling != node &&
+                sibling.Name.Equals(newName, StringComparison.OrdinalIgnoreCase)))
+        {
+            error = L.F("fs.rename_exists", newName);
+            return false;
+        }
+
+        if (node.IsHosted && !HostMount.Rename(node, newName, out error)) return false;
+
+        // A translated name cannot survive being edited: once the user has typed
+        // one, the node stops following the interface language.
+        node.NameKey = null;
+        node.Name = newName;
+        node.Modified = DateTime.Now;
+        return true;
+    }
+
     public void Delete(VNode node)
     {
         if (node?.Parent == null || node.Protected) return;

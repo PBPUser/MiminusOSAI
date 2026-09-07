@@ -129,6 +129,10 @@ internal static class Program
 
                 shell.Frame(ctx);
 
+                // The update centre has staged a new build and the installer is
+                // waiting for this process to end.
+                if (shell.ExitRequested) break;
+
                 if (pendingOpen)
                 {
                     pendingOpen = false;
@@ -306,6 +310,10 @@ internal static class Program
                         "esc" or "escape" => (Platform.Keys.Escape, (char?)null),
                         "del" or "delete" => (Platform.Keys.Delete, (char?)null),
                         "tab" => (Platform.Keys.Tab, (char?)null),
+                        "f1" => (Platform.Keys.F1, (char?)null),
+                        "f2" => (Platform.Keys.F2, (char?)null),
+                        "f3" => (Platform.Keys.F3, (char?)null),
+                        "f5" => (Platform.Keys.F5, (char?)null),
                         _ => (0, name.Length > 0 ? name[0] : (char?)null),
                     };
                     o.Keys.Add((vk, ch, at));

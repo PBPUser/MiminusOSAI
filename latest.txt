@@ -18,9 +18,16 @@ released  = 2026-09-07
 size      = 1,44 МБ
 size.en   = 1.44 MB
 
-# Куда ведёт «Загрузить»: страница проекта и сам архив.
+# Страница проекта, показываемая в центре обновления.
 url       = https://github.com/PBPUser/MiminusOSAI
+
+# Исходные тексты этой версии.
 download  = https://github.com/PBPUser/MiminusOSAI/archive/refs/heads/main.zip
+
+# Собранный пакет, который центр обновления скачивает и устанавливает сам.
+# Контрольная сумма обязательна: без неё пакет будет отклонён.
+package   = https://raw.githubusercontent.com/PBPUser/MiminusOSAI/main/dist/MiminusOS-7.1.zip
+sha256    = 6C519ED312F685740A5A30DD6FF2C667C433157939EB28EF4B96FF483DB300B1
 
 notes     = Исправлено: антивирус Гревцова больше не закрывается по нажатию Backspace.\nДобавлено: 12 обоев рабочего стола и переключение сглаживания шрифтов.\nДобавлено: программы вынесены в отдельные библиотеки и загружаются из папки apps.\nДобавлено: подключение настоящей папки как диска.\nРаспознавание голоса по-прежнему не доделано.
 notes.en  = Fixed: the Grevtsov antivirus no longer closes when Backspace is pressed.\nAdded: 12 desktop wallpapers and font-smoothing switching.\nAdded: programs moved into separate libraries, loaded from the apps folder.\nAdded: mounting a real folder as a disk.\nVoice recognition is still unfinished.

@@ -59,6 +59,10 @@ public sealed class UpdateWindow : OsWindow
             case UpdateState.Checking: DrawChecking(c, area); break;
             case UpdateState.Available: DrawAvailable(c, area, updates.Latest); break;
             case UpdateState.UpToDate: DrawUpToDate(c, area, updates.Latest); break;
+            case UpdateState.Downloading:
+            case UpdateState.Verifying:
+            case UpdateState.Extracting: DrawInstalling(c, area, updates); break;
+            case UpdateState.ReadyToRestart: DrawReady(c, area, updates.Latest); break;
             case UpdateState.Failed: DrawFailed(c, area, updates); break;
             default: DrawIdle(c, area); break;
         }
@@ -129,6 +133,43 @@ public sealed class UpdateWindow : OsWindow
         Notes(c, area, info?.Notes);
     }
 
+    void DrawInstalling(UiContext c, Rect area, UpdateService updates)
+    {
+        var t = c.Theme;
+        string headline = updates.State switch
+        {
+            UpdateState.Verifying => L.T("update.verifying"),
+            UpdateState.Extracting => L.T("update.extracting"),
+            _ => L.T("update.downloading"),
+        };
+        c.F.UiBold.Draw(c.R, headline, area.X, area.Y, t.Text);
+
+        float y = area.Y + c.F.UiBold.Height + 10;
+        W.ProgressBar(c, new Rect(area.X, y, area.W, 18), updates.Progress);
+
+        // Bytes are only known while the package is arriving.
+        if (updates.State == UpdateState.Downloading && updates.Total > 0)
+            c.F.Small.Draw(c.R, L.F("update.bytes_of", L.FileSize(updates.Fetched),
+                                    L.FileSize(updates.Total)),
+                           area.X, y + 26, t.TextDisabled);
+
+        c.F.Small.Draw(c.R, L.T("update.do_not_turn_off"), area.X, y + 46, t.TextDisabled);
+    }
+
+    void DrawReady(UiContext c, Rect area, UpdateInfo info)
+    {
+        var t = c.Theme;
+        Icons.Draw(c.R, IconId.Shield, new Rect(area.X, area.Y, 32, 32));
+        c.F.UiBold.Draw(c.R, L.T("update.ready"), area.X + 42, area.Y + 2, t.Text);
+        c.F.Ui.Draw(c.R, L.F("update.ready_detail", info?.Version ?? ""),
+                    area.X + 42, area.Y + 4 + c.F.UiBold.Height, t.TextDisabled);
+        area.CutTop(52);
+
+        c.F.Ui.Draw(c.R, L.T("update.restart_explains"), area.X, area.Y, t.Text);
+        area.CutTop(c.F.Ui.Height + 10);
+        Notes(c, area, info?.Notes);
+    }
+
     void DrawUpToDate(UiContext c, Rect area, UpdateInfo info)
     {
         var t = c.Theme;
@@ -194,24 +235,37 @@ public sealed class UpdateWindow : OsWindow
         if (W.Button(c, Id + ".check", check, L.T("update.check_now"), enabled: !updates.Busy))
             updates.BeginCheck();
 
-        var download = new Rect(check.X - 122 - 8, footer.Y, 122, 24);
-        bool canDownload = updates.State == UpdateState.Available;
-        if (W.Button(c, Id + ".download", download, L.T("update.download"), enabled: canDownload))
-            Download(c, updates.Latest);
+        // One button carries the cycle: install, then restart into it.
+        var action = new Rect(check.X - 170 - 8, footer.Y, 170, 24);
+        switch (updates.State)
+        {
+            case UpdateState.ReadyToRestart:
+                if (W.Button(c, Id + ".restart", action, L.T("update.restart_now"),
+                             defaultButton: true))
+                    _shell.RestartForUpdate(c);
+                break;
+
+            case UpdateState.Available:
+                if (W.Button(c, Id + ".install", action, L.T("update.install"),
+                             defaultButton: true))
+                    Confirm(c, updates.Latest);
+                break;
+
+            default:
+                W.Button(c, Id + ".install", action, L.T("update.install"), enabled: false);
+                break;
+        }
     }
 
-    /// <summary>«Загрузить» opens the release page in the system's own browser
-    /// and puts the address on the clipboard, which is as far as an OS that
-    /// cannot actually install anything is willing to go.</summary>
-    void Download(UiContext c, UpdateInfo info)
+    /// <summary>Downloading replaces the running program, so it is asked for
+    /// rather than assumed.</summary>
+    void Confirm(UiContext c, UpdateInfo info)
     {
-        string url = info?.Download;
-        if (string.IsNullOrEmpty(url)) url = info?.Url ?? UpdateService.RepositoryUrl;
-
-        Clipboard.SetText(url);
-        _shell.Launch(c, "browser", null);
-        _shell.MessageBox(c, L.T("update.title"), L.F("update.download_started", url),
-                          MsgButtons.Ok, IconId.DlgInfo, null, Sfx.Info);
+        _shell.MessageBox(c, L.T("update.title"),
+            L.F("update.confirm_install", info?.Name ?? "", info?.Size ?? "?"),
+            MsgButtons.Yes | MsgButtons.No, IconId.DlgQuestion,
+            r => { if (r == MsgResult.Yes) _shell.Updates.BeginDownload(); },
+            Sfx.Question);
     }
 
     // ---- small drawing helpers -------------------------------------------

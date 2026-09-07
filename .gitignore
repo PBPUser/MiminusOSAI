@@ -1,0 +1,11 @@
+# build output
+**/bin/
+**/obj/
+
+# IDE
+.vs/
+*.user
+*.suo
+
+# reference footage (large, not part of the source)
+references/*.mp4

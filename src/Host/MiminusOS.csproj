@@ -1,0 +1,66 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The launcher. It owns the window and the frame loop; every program the
+       OS runs is discovered from the apps/ folder at startup. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Miminus</RootNamespace>
+    <AssemblyName>MiminusOS</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Core\Miminus.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Programs are plugins: referenced only so they build first, never linked.
+       The host finds them by reflection in apps/ at startup. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Apps\Browser\Miminus.App.Browser.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\Calculator\Miminus.App.Calculator.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\Display\Miminus.App.Display.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\Explorer\Miminus.App.Explorer.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\Minesweeper\Miminus.App.Minesweeper.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\Notepad\Miminus.App.Notepad.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\Paint\Miminus.App.Paint.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\Player\Miminus.App.Player.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\Sheet\Miminus.App.Sheet.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\System\Miminus.App.System.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\Update\Miminus.App.Update.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\Utilities\Miminus.App.Utilities.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- The published version manifest, kept beside the executable so the update
+       centre still has something to show when the repository is unreachable. -->
+  <ItemGroup>
+    <Content Include="..\..\latest.txt" Link="latest.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <Target Name="CollectPrograms" AfterTargets="Build">
+    <ItemGroup>
+      <ProgramAssembly Include="..\Apps\*\bin\$(Configuration)\$(TargetFramework)\Miminus.App.*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ProgramAssembly)" DestinationFolder="$(OutDir)apps" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

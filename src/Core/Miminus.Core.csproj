@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The engine and shell: everything a program DLL is written against. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Miminus</RootNamespace>
+    <AssemblyName>Miminus.Core</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <NoWarn>CA1416</NoWarn>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <!-- Translation catalogues: embedded so the library is self-contained, and
+       copied beside the host so they can be edited without a rebuild. -->
+  <ItemGroup>
+    <EmbeddedResource Include="lang\*.json" />
+    <Content Include="lang\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,26 @@
+# МИМИНУС ОС — сведения о последней версии.
+#
+# Центр обновления читает этот файл по адресу
+#   https://raw.githubusercontent.com/PBPUser/MiminusOSAI/main/latest.txt
+# Чтобы объявить новую версию, достаточно изменить строки ниже и отправить
+# файл в репозиторий: пересобирать систему не требуется.
+#
+# Формат — «ключ = значение», одна пара на строку. Строка, начинающаяся с #,
+# считается комментарием. Ключ с суффиксом .en используется, когда интерфейс
+# переключён на английский язык.
+
+version   = 7.1
+name      = МИМИНУС ОС 7.1
+name.en   = MIMINUS OS 7.1
+codename  = Наш ответ BOLGENOS, Service Pack 1
+codename.en = Our answer to BOLGENOS, Service Pack 1
+released  = 2026-09-07
+size      = 1,44 МБ
+size.en   = 1.44 MB
+
+# Куда ведёт «Загрузить»: страница проекта и сам архив.
+url       = https://github.com/PBPUser/MiminusOSAI
+download  = https://github.com/PBPUser/MiminusOSAI/archive/refs/heads/main.zip
+
+notes     = Исправлено: антивирус Гревцова больше не закрывается по нажатию Backspace.\nДобавлено: 12 обоев рабочего стола и переключение сглаживания шрифтов.\nДобавлено: программы вынесены в отдельные библиотеки и загружаются из папки apps.\nДобавлено: подключение настоящей папки как диска.\nРаспознавание голоса по-прежнему не доделано.
+notes.en  = Fixed: the Grevtsov antivirus no longer closes when Backspace is pressed.\nAdded: 12 desktop wallpapers and font-smoothing switching.\nAdded: programs moved into separate libraries, loaded from the apps folder.\nAdded: mounting a real folder as a disk.\nVoice recognition is still unfinished.

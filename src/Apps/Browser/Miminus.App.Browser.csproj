@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Miminus.Apps</RootNamespace>
+    <AssemblyName>Miminus.App.Browser</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Core is supplied by the host; a private copy would create a second,
+         incompatible set of types when the assembly is loaded. -->
+    <ProjectReference Include="..\..\Core\Miminus.Core.csproj" Private="false" />
+  </ItemGroup>
+
+</Project>

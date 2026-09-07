@@ -165,6 +165,9 @@ public sealed class ShellHost : IDisposable
         }
 
         Updates.Poll(c.Dt);
+
+        // Program assemblies whose windows have all closed are let go.
+        Programs.CollectUnused(_uptime);
         if (Updates.State == UpdateState.Available && !Updates.Announced)
         {
             Updates.Announced = true;
@@ -172,6 +175,7 @@ public sealed class ShellHost : IDisposable
         }
 
         HandleGlobalKeys(c);
+        HandleWindowsKeyRelease(c);
 
         // Layers are painted back-to-front but must claim input front-to-back.
         // Menus resolve their input first (they sit above everything), then the
@@ -182,14 +186,26 @@ public sealed class ShellHost : IDisposable
 
         bool overChrome =
             Menus.HitTest(c.MouseX, c.MouseY) ||
-            Taskbar.Bounds(c).Contains(c.MouseX, c.MouseY) ||
+            (!Taskbar.Retracted && Taskbar.Bounds(c).Contains(c.MouseX, c.MouseY)) ||
             (Taskbar.StartOpen && StartMenu.Bounds(c).Contains(c.MouseX, c.MouseY));
 
         Wm.Update(c, blockWindows: overChrome);
 
         Desktop.Draw(c);
-        Wm.Draw(c);
-        Taskbar.Draw(c);
+
+        // "Keep the taskbar on top" is literally the draw order: off, and
+        // windows paint over it.
+        if (Settings.TaskbarOnTop)
+        {
+            Wm.Draw(c);
+            Taskbar.Draw(c);
+        }
+        else
+        {
+            Taskbar.Draw(c);
+            Wm.Draw(c);
+        }
+
         if (Taskbar.StartOpen) StartMenu.Draw(c);
         Desktop.Update(c);
         Menus.Draw(c);
@@ -218,6 +234,40 @@ public sealed class ShellHost : IDisposable
             Launch(c, "about", null);
             c.KeyboardHandled = true;
         }
+        else if (c.In.Win) HandleWindowsKey(c);
+    }
+
+    /// <summary>The Windows key and its combinations.
+    ///
+    /// The key is taken from the host shell by a low-level hook, so it belongs
+    /// to МИМИНУС while the window has the focus. On its own it opens the Start
+    /// menu, on the release rather than the press — otherwise every combination
+    /// below would flash the menu open on its way through.</summary>
+    void HandleWindowsKey(UiContext c)
+    {
+        if (c.In.KeyPressed(Keys.E)) { Launch(c, "mycomputer", null); _winCombo = true; }
+        else if (c.In.KeyPressed(Keys.R)) { Launch(c, "run", null); _winCombo = true; }
+        else if (c.In.KeyPressed(Keys.F)) { Launch(c, "search", null); _winCombo = true; }
+        else if (c.In.KeyPressed(Keys.L)) { BeginLogOff(c); _winCombo = true; }
+        else if (c.In.KeyPressed(Keys.U)) { Launch(c, "update", null); _winCombo = true; }
+        else if (c.In.KeyPressed(Keys.D)) { Wm.MinimizeAll(c); _winCombo = true; }
+        else if (c.In.KeyPressed(Keys.Pause)) { Launch(c, "about", null); _winCombo = true; }
+        else return;
+
+        Taskbar.CloseStart(c);
+        c.KeyboardHandled = true;
+    }
+
+    /// <summary>Set while a Win+key combination is running, so letting the
+    /// Windows key go afterwards does not also open the Start menu.</summary>
+    bool _winCombo;
+
+    void HandleWindowsKeyRelease(UiContext c)
+    {
+        if (!c.In.KeyReleased(Keys.LWin) && !c.In.KeyReleased(Keys.RWin)) return;
+
+        if (_winCombo) { _winCombo = false; return; }
+        Taskbar.ToggleStart(c);
     }
 
     // ---- boot / shutdown screens ----------------------------------------
@@ -709,12 +759,17 @@ public sealed class ShellHost : IDisposable
                 if (running != null) { Wm.Focus(running); return; }
             }
 
-            var window = program.Create(this, node);
+            // The DLL is read here, not at startup: this is the first moment
+            // the OS actually needs it.
+            var window = Programs.Create(program, this, node);
             if (window != null)
             {
                 window.ProgramId = program.Id;
                 Wm.Open(window, c);
             }
+            else foreach (string failure in Programs.Failures.TakeLast(1))
+                MessageBox(c, L.T("shell.miminus_os"), L.F("shell.program_failed_to_start", failure),
+                           MsgButtons.Ok, IconId.DlgError, null, Sfx.Error);
             return;
         }
 
@@ -853,6 +908,7 @@ public sealed class ShellHost : IDisposable
     public void LoadPrograms(string appsDirectory)
     {
         Programs.LoadFrom(appsDirectory);
+        Wm.WindowClosed = w => Programs.WindowClosed(w.ProgramId, _uptime);
         foreach (string failure in Programs.Failures)
             Console.Error.WriteLine("program load failed: " + failure);
     }

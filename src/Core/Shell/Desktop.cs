@@ -467,21 +467,46 @@ public sealed class Desktop
 
     void DeleteSelected(UiContext c, List<DesktopIcon> sel)
     {
-        string msg = sel.Count == 1
-            ? L.F("desktop.are_you_sure_you_want_to_move_0_to_the_recyc", sel[0].Label)
-            : L.F("desktop.are_you_sure_you_want_to_move_these_0_items", sel.Count);
+        // Ctrl deletes outright instead of to the Recycle Bin — and a folder
+        // called Windows moves no other way. The key is read now, because the
+        // confirmation is answered after it has been let go.
+        bool force = c.In.Ctrl;
 
-        _shell.MessageBox(c, L.T("desktop.confirm_file_delete"), msg,
+        var stubborn = sel.FirstOrDefault(i => VirtualFS.NeedsForce(i.Node));
+        if (stubborn != null && !force)
+        {
+            _shell.MessageBox(c, stubborn.Label, L.T("fs.hold_ctrl_to_delete"),
+                MsgButtons.Ok, IconId.DlgWarning, null, Sfx.Warning);
+            return;
+        }
+
+        string msg = sel.Count == 1
+            ? L.F(force ? "desktop.are_you_sure_you_want_to_delete_0_permanentl"
+                        : "desktop.are_you_sure_you_want_to_move_0_to_the_recyc", sel[0].Label)
+            : L.F(force ? "desktop.are_you_sure_you_want_to_delete_these_0_item"
+                        : "desktop.are_you_sure_you_want_to_move_these_0_items", sel.Count);
+
+        _shell.MessageBox(c,
+            force ? L.T("desktop.confirm_folder_delete") : L.T("desktop.confirm_file_delete"), msg,
             MsgButtons.Yes | MsgButtons.No, IconId.DlgQuestion, r =>
             {
                 if (r != MsgResult.Yes) return;
+
+                bool windowsWentAway = false;
                 foreach (var i in sel)
                 {
-                    if (i.Node != null) _shell.Fs.Delete(i.Node);
+                    if (VirtualFS.IsWindowsFolder(i.Node)) windowsWentAway = true;
+                    if (i.Node != null) _shell.Fs.Delete(i.Node, force);
                     Icons.Remove(i);
                 }
                 Relayout(c.ScreenW, c.ScreenH);
                 _shell.Audio.Play(Sfx.Trash, 0.8f);
+
+                // Part 3 deletes a Windows folder to prove the system is not
+                // Windows underneath. It carries on.
+                if (windowsWentAway)
+                    _shell.MessageBox(c, L.T("shell.miminus_os"), L.T("fs.windows_deleted"),
+                        MsgButtons.Ok, IconId.DlgInfo, null, Sfx.Info);
             }, Sfx.Question);
     }
 

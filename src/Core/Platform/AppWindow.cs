@@ -32,6 +32,7 @@ public sealed class InputState
     public bool Ctrl => KeyDown(Keys.Control);
     public bool Shift => KeyDown(Keys.Shift);
     public bool Alt => KeyDown(Keys.Menu);
+    public bool Win => KeyDown(Keys.LWin) || KeyDown(Keys.RWin);
 
     public void SetButton(MouseButton b, bool down) => _down[(int)b] = down;
     internal void SetDouble(MouseButton b) => _dbl[(int)b] = true;
@@ -72,6 +73,7 @@ public static class Keys
         PageUp = 0x21, PageDown = 0x22, End = 0x23, Home = 0x24,
         Left = 0x25, Up = 0x26, Right = 0x27, Down = 0x28,
         Insert = 0x2D, Delete = 0x2E,
+        LWin = 0x5B, RWin = 0x5C,
         D0 = 0x30, D1 = 0x31, D2 = 0x32, D3 = 0x33, D4 = 0x34,
         D5 = 0x35, D6 = 0x36, D7 = 0x37, D8 = 0x38, D9 = 0x39,
         A = 0x41, B = 0x42, C = 0x43, D = 0x44, E = 0x45, F = 0x46, G = 0x47,
@@ -87,6 +89,8 @@ public sealed unsafe class AppWindow : IDisposable
 {
     IntPtr _hwnd, _hdc, _hglrc;
     Win32.WndProc _proc;           // kept alive: Win32 holds a raw pointer to it
+    Win32.HookProc _hookProc;      // likewise
+    IntPtr _keyboardHook;
     bool _shouldClose;
     IntPtr _cursor;
 
@@ -155,6 +159,42 @@ public sealed unsafe class AppWindow : IDisposable
         Win32.GetClientRect(_hwnd, out var cr);
         Width = cr.right - cr.left;
         Height = cr.bottom - cr.top;
+
+        InstallKeyboardHook();
+    }
+
+    /// <summary>Claims the Windows key while this window has the focus.
+    ///
+    /// An OS pretending to be an OS needs its own Start key, and the host shell
+    /// would otherwise open its Start menu over the top. A low-level hook is
+    /// the only way to see the key before the shell does; it runs on this
+    /// thread, only swallows the two Windows keys, and only while the window is
+    /// focused, so the host is left usable the moment focus goes elsewhere. If
+    /// the hook cannot be installed the key simply keeps its usual meaning.</summary>
+    void InstallKeyboardHook()
+    {
+        _hookProc = KeyboardHook;
+        _keyboardHook = Win32.SetWindowsHookExW(Win32.WH_KEYBOARD_LL, _hookProc,
+                                                Win32.GetModuleHandleW(IntPtr.Zero), 0);
+    }
+
+    IntPtr KeyboardHook(int code, IntPtr wParam, IntPtr lParam)
+    {
+        if (code == Win32.HC_ACTION && Focused)
+        {
+            var info = Marshal.PtrToStructure<Win32.KBDLLHOOKSTRUCT>(lParam);
+            if (info.vkCode is Keys.LWin or Keys.RWin)
+            {
+                uint msg = (uint)wParam;
+                if (msg is Win32.WM_KEYDOWN or Win32.WM_SYSKEYDOWN) Input.SetKey((int)info.vkCode, true);
+                else if (msg is Win32.WM_KEYUP or Win32.WM_SYSKEYUP) Input.SetKey((int)info.vkCode, false);
+
+                // Non-zero swallows the key, so the host shell never sees it.
+                return (IntPtr)1;
+            }
+        }
+
+        return Win32.CallNextHookEx(_keyboardHook, code, wParam, lParam);
     }
 
     IntPtr WindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
@@ -299,6 +339,11 @@ public sealed unsafe class AppWindow : IDisposable
 
     public void Dispose()
     {
+        if (_keyboardHook != IntPtr.Zero)
+        {
+            Win32.UnhookWindowsHookEx(_keyboardHook);
+            _keyboardHook = IntPtr.Zero;
+        }
         if (_hglrc != IntPtr.Zero)
         {
             Wgl.MakeCurrent(IntPtr.Zero, IntPtr.Zero);

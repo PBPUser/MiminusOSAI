@@ -65,6 +65,10 @@ public sealed class WindowManager
         c.Sound(Sfx.WindowOpen, 0.55f);
     }
 
+    /// <summary>Raised as a window is retired, so the registry can count down
+    /// the assembly the window came from.</summary>
+    public Action<OsWindow> WindowClosed;
+
     public void Focus(OsWindow w)
     {
         if (w == null || !_windows.Contains(w)) return;
@@ -193,7 +197,8 @@ public sealed class WindowManager
 
     public void Update(UiContext c, bool blockWindows = false)
     {
-        WorkArea = new Rect(0, 0, c.ScreenW, c.ScreenH - c.Theme.TaskbarHeight);
+        // An auto-hiding taskbar gives its strip back to the windows.
+        WorkArea = new Rect(0, 0, c.ScreenW, c.ScreenH - (Shell?.Taskbar.Reserve(c) ?? c.Theme.TaskbarHeight));
 
         // Retire closed windows first so nothing draws a dead window.
         for (int i = _windows.Count - 1; i >= 0; i--)
@@ -202,8 +207,11 @@ public sealed class WindowManager
             {
                 var dead = _windows[i];
                 _windows.RemoveAt(i);
+                // Widget state is keyed by window id and would otherwise keep a
+                // reference into the program's assembly alive.
                 c.ForgetState(dead.Id);
                 dead.OnClosed();
+                WindowClosed?.Invoke(dead);
                 c.Sound(Sfx.WindowClose, 0.5f);
                 if (Focused == dead) Focused = null;
                 if (_dragWindow == dead) { _dragWindow = null; _drag = DragMode.None; }

@@ -40,3 +40,13 @@ public sealed class AdvancedDisplayProgram : IProgram
     public IconId Icon => IconId.Display;
     public OsWindow Create(ShellHost shell, VNode document) => new AdvancedSettingsWindow();
 }
+
+/// <summary>«Свойства панели задач и меню "Пуск"».</summary>
+public sealed class TaskbarPropertiesProgram : IProgram
+{
+    public string Id => "taskbarprops";
+    public string NameKey => "tbprops.title";
+    public IconId Icon => IconId.Settings;
+    public bool Singleton => true;
+    public OsWindow Create(ShellHost shell, VNode document) => new TaskbarPropertiesWindow(shell);
+}

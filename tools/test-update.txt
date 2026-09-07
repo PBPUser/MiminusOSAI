@@ -1,0 +1,19 @@
+# Fixture for exercising the update cycle end to end.
+#
+#   MiminusOS.exe --update-url=tools/test-update.txt
+#
+# It advertises a version higher than any build, pointing at the real
+# published package, so Проверить → Установить runs the whole path:
+# download, checksum, unpack, swap, restart.
+
+version  = 7.2
+name     = МИМИНУС ОС 7.2 (проверка обновления)
+name.en  = MIMINUS OS 7.2 (update test)
+released = 2026-09-07
+size     = 394 КБ
+size.en  = 394 KB
+url      = https://github.com/PBPUser/MiminusOSAI
+package  = https://raw.githubusercontent.com/PBPUser/MiminusOSAI/main/dist/MiminusOS-7.1.zip
+sha256   = 6C519ED312F685740A5A30DD6FF2C667C433157939EB28EF4B96FF483DB300B1
+notes    = Тестовый манифест: пакет тот же, версия завышена нарочно.
+notes.en = A test manifest: the same package, with the version deliberately raised.

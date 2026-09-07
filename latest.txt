@@ -9,14 +9,14 @@
 # считается комментарием. Ключ с суффиксом .en используется, когда интерфейс
 # переключён на английский язык.
 
-version   = 7.1
-name      = МИМИНУС ОС 7.1
-name.en   = MIMINUS OS 7.1
-codename  = Наш ответ BOLGENOS, Service Pack 1
-codename.en = Our answer to BOLGENOS, Service Pack 1
+version   = 7.2
+name      = МИМИНУС ОС 7.2
+name.en   = MIMINUS OS 7.2
+codename  = Наш ответ BOLGENOS, Service Pack 2
+codename.en = Our answer to BOLGENOS, Service Pack 2
 released  = 2026-09-07
-size      = 1,44 МБ
-size.en   = 1.44 MB
+size      = 404 КБ
+size.en   = 404 KB
 
 # Страница проекта, показываемая в центре обновления.
 url       = https://github.com/PBPUser/MiminusOSAI
@@ -26,8 +26,20 @@ download  = https://github.com/PBPUser/MiminusOSAI/archive/refs/heads/main.zip
 
 # Собранный пакет, который центр обновления скачивает и устанавливает сам.
 # Контрольная сумма обязательна: без неё пакет будет отклонён.
-package   = https://raw.githubusercontent.com/PBPUser/MiminusOSAI/main/dist/MiminusOS-7.1.zip
-sha256    = 6C519ED312F685740A5A30DD6FF2C667C433157939EB28EF4B96FF483DB300B1
+package   = https://raw.githubusercontent.com/PBPUser/MiminusOSAI/main/dist/MiminusOS-7.2.zip
+sha256    = 089DAB527635E44CF7407C223D62A21EF8EF32D1C6C91C09BF8C4C7C7E935ED8
 
-notes     = Исправлено: антивирус Гревцова больше не закрывается по нажатию Backspace.\nДобавлено: 12 обоев рабочего стола и переключение сглаживания шрифтов.\nДобавлено: программы вынесены в отдельные библиотеки и загружаются из папки apps.\nДобавлено: подключение настоящей папки как диска.\nРаспознавание голоса по-прежнему не доделано.
-notes.en  = Fixed: the Grevtsov antivirus no longer closes when Backspace is pressed.\nAdded: 12 desktop wallpapers and font-smoothing switching.\nAdded: programs moved into separate libraries, loaded from the apps folder.\nAdded: mounting a real folder as a disk.\nVoice recognition is still unfinished.
+notes     = Добавлено: центр обновления устанавливает обновления сам — загрузка, проверка контрольной суммы, распаковка и перезапуск.
+Добавлено: переименование папок и файлов на месте (F2).
+Добавлено: свойства панели задач — закрепление, автоскрытие, группировка кнопок, быстрый запуск, часы.
+Добавлено: клавиша Windows и сочетания с ней.
+Добавлено: папка Windows удаляется с зажатым Ctrl, и система продолжает работать.
+Добавлено: произношение и склонение «Михаил Гревцов» во «Всё в одном».
+Изменено: библиотеки программ загружаются по требованию и выгружаются, когда не нужны.
+notes.en  = Added: the update centre installs updates itself — download, checksum, unpack, restart.
+Added: renaming folders and files in place (F2).
+Added: taskbar properties — locking, auto-hide, button grouping, quick launch, clock.
+Added: the Windows key and its combinations.
+Added: a Windows folder deletes with Ctrl held, and the system carries on.
+Added: pronunciation and declension of «Михаил Гревцов» in All-in-One.
+Changed: program libraries load on demand and unload when no longer needed.

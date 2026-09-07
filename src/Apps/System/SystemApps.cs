@@ -204,6 +204,29 @@ public sealed class TerminalWindow : OsWindow
 
             case "echo": Echo(arg); break;
 
+            // Which program assemblies are resident. The point of the command
+            // is that the answer changes as programs are opened and closed.
+            case "apps":
+            {
+                Echo("");
+                foreach (var (name, loaded, windows) in Shell.Programs.Assemblies().OrderBy(a => a.name))
+                    Echo($"  {name,-28} {(loaded ? L.T("sys.apps_loaded") : L.T("sys.apps_unloaded")),-12} {windows}");
+                Echo("");
+                Echo(L.F("sys.apps_summary", Shell.Programs.LoadedAssemblies, Shell.Programs.Count));
+
+                if (arg.Trim().Equals("free", StringComparison.OrdinalIgnoreCase))
+                {
+                    Echo(L.F("sys.apps_unloaded_count", Shell.Programs.UnloadIdle()));
+                    // Unloading is a request; this says whether the runtime
+                    // actually finished it.
+                    Echo(L.T(Shell.Programs.AllDroppedCollected
+                        ? "sys.apps_collected" : "sys.apps_still_resident"));
+                }
+
+                Echo("");
+                break;
+            }
+
             case "ver":
                 Echo("");
                 Echo(L.T("sys.miminus_os_version_7_0_2010"));
@@ -511,6 +534,9 @@ public sealed class ControlPanelWindow : OsWindow
         new("cpl.printers_and_faxes", IconId.Printer,
             "cpl.no_printers_installed",
             (c, w) => w.Shell.Launch(c, "printers", null)),
+        new("tbprops.title", IconId.Settings,
+            "cpl.taskbar_and_start_menu",
+            (c, w) => w.Shell.Launch(c, "taskbarprops", null)),
         new("cpl.miminus_update", IconId.Shield,
             "cpl.check_the_repository_for_a_newer_version",
             (c, w) => w.Shell.Launch(c, "update", null)),

@@ -820,6 +820,11 @@ public sealed class ExplorerWindow : OsWindow
         if (_selected == null) return;
         var victim = _selected;
 
+        // Ctrl removes outright rather than to the Recycle Bin, and it is the
+        // only thing that will shift a folder called Windows. Read now: the
+        // confirmation is answered long after the key has been let go.
+        bool force = c.In.Ctrl;
+
         if (VirtualFS.IsProtected(victim))
         {
             Shell.MessageBox(c, victim.Name, L.T("fs.protected_folder"),
@@ -834,13 +839,22 @@ public sealed class ExplorerWindow : OsWindow
             return;
         }
 
-        Shell.MessageBox(c, L.T("explorer.confirm_file_delete"),
-            L.F("explorer.are_you_sure_you_want_to_move_0_to_the_recyc", victim.Name),
+        if (VirtualFS.NeedsForce(victim) && !force)
+        {
+            Shell.MessageBox(c, victim.Name, L.T("fs.hold_ctrl_to_delete"),
+                MsgButtons.Ok, IconId.DlgWarning, null, Sfx.Warning);
+            return;
+        }
+
+        Shell.MessageBox(c,
+            force ? L.T("explorer.confirm_folder_delete") : L.T("explorer.confirm_file_delete"),
+            force ? L.F("explorer.are_you_sure_you_want_to_delete_0_permanentl", victim.Name)
+                  : L.F("explorer.are_you_sure_you_want_to_move_0_to_the_recyc", victim.Name),
             MsgButtons.Yes | MsgButtons.No, IconId.DlgQuestion, r =>
             {
                 if (r != MsgResult.Yes) return;
                 bool wasWindows = VirtualFS.IsWindowsFolder(victim);
-                Shell.Fs.Delete(victim);
+                Shell.Fs.Delete(victim, force);
                 if (_selected == victim) _selected = null;
                 Shell.Audio.Play(Sfx.Trash, 0.8f);
 

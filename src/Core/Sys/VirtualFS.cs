@@ -535,10 +535,27 @@ public sealed class VirtualFS
         return true;
     }
 
-    public void Delete(VNode node)
+    /// <summary>True for a node the shell will not delete on an ordinary
+    /// Delete: a folder called Windows belongs to the system, and taking it out
+    /// has to be deliberate. Holding Ctrl is what makes it deliberate.</summary>
+    public static bool NeedsForce(VNode node) => IsWindowsFolder(node);
+
+    /// <summary>Moves a node to the Recycle Bin, or removes it outright when
+    /// <paramref name="permanent"/> — which is what Ctrl+Delete does, and the
+    /// only way a Windows folder goes anywhere.</summary>
+    public void Delete(VNode node, bool permanent = false)
     {
         if (node?.Parent == null || node.Protected) return;
+        if (NeedsForce(node) && !permanent) return;
+
         node.Parent.Children.Remove(node);
+
+        if (permanent)
+        {
+            node.Parent = null;
+            return;
+        }
+
         node.Parent = RecycleBin;
         RecycleBin.Children.Add(node);
     }

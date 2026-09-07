@@ -36,12 +36,53 @@ public sealed class Taskbar
         c.Sound(Sfx.Balloon, 0.8f);
     }
 
+    /// <summary>How far the bar has slid off the bottom, 0 (out) to 1 (hidden).
+    /// Animated so auto-hide reads as movement rather than a jump.</summary>
+    float _hidden;
+
+    /// <summary>Whether the chevron has been used to show the hidden icons.</summary>
+    bool _trayExpanded;
+
+    /// <summary>True while an auto-hidden bar is out of the way.</summary>
+    public bool Retracted => _hidden > 0.5f;
+
+    /// <summary>Height windows must leave clear: nothing, when the bar is
+    /// hiding itself.</summary>
+    public float Reserve(UiContext c)
+        => _shell.Settings.AutoHideTaskbar ? 0 : c.Theme.TaskbarHeight;
+
     public Rect Bounds(UiContext c)
-        => new(0, c.ScreenH - c.Theme.TaskbarHeight, c.ScreenW, c.Theme.TaskbarHeight);
+    {
+        float h = c.Theme.TaskbarHeight;
+        // Two pixels stay on screen when hidden, which is the strip the pointer
+        // has to find — the same trick the original uses.
+        return new Rect(0, c.ScreenH - h + _hidden * (h - 2), c.ScreenW, h);
+    }
+
+    /// <summary>Slides the bar in and out. The pointer being near the bottom
+    /// edge, or the Start menu being open, keeps it out.</summary>
+    void UpdateAutoHide(UiContext c)
+    {
+        if (!_shell.Settings.AutoHideTaskbar)
+        {
+            _hidden = 0;
+            return;
+        }
+
+        float h = c.Theme.TaskbarHeight;
+        bool wanted = StartOpen
+                   || _balloons.Count > 0
+                   || c.MouseY >= c.ScreenH - (Retracted ? 3 : h);
+
+        float target = wanted ? 0 : 1;
+        _hidden += Math.Clamp(target - _hidden, -1f, 1f) * MathF.Min(1, c.Dt * 9);
+        if (MathF.Abs(target - _hidden) < 0.01f) _hidden = target;
+    }
 
     public void Draw(UiContext c)
     {
         var t = c.Theme;
+        UpdateAutoHide(c);
         var bar = Bounds(c);
 
         // Background.
@@ -60,6 +101,11 @@ public sealed class Taskbar
         x = startRect.Right + 6;
 
         // ---- quick launch ------------------------------------------------
+        // An unlocked bar shows the ridged handle you would drag it by.
+        if (!_shell.Settings.LockTaskbar) x += DrawGripper(c, bar, x);
+
+        if (_shell.Settings.ShowQuickLaunch)
+        {
         var quick = new (IconId icon, string app, string tip)[]
         {
             (IconId.Firefox, "browser", "taskbar.firefox_web_browser"),
@@ -81,6 +127,9 @@ public sealed class Taskbar
         c.R.FillRect(new Rect(x, bar.Y + 5, 1, bar.H - 10), Color.Rgba(0x000000, 60));
         c.R.FillRect(new Rect(x + 1, bar.Y + 5, 1, bar.H - 10), Color.Rgba(0xFFFFFF, 60));
         x += 7;
+        }
+
+        if (!_shell.Settings.LockTaskbar) x += DrawGripper(c, bar, x);
 
         // ---- notification area (measured first, buttons fill the rest) ----
         float trayW = DrawTray(c, bar, measureOnly: true);
@@ -93,6 +142,18 @@ public sealed class Taskbar
         if (c.RightClicked(bar)) ShowTaskbarMenu(c);
 
         DrawBalloons(c, bar);
+    }
+
+    /// <summary>The two ridges XP puts at the start of each unlocked band.</summary>
+    static float DrawGripper(UiContext c, Rect bar, float x)
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            var line = new Rect(x + i * 3, bar.Y + 6, 1, bar.H - 12);
+            c.R.FillRect(line, Color.Rgba(0xFFFFFF, 110));
+            c.R.FillRect(new Rect(line.X + 1, line.Y, 1, line.H), Color.Rgba(0x000000, 60));
+        }
+        return 10;
     }
 
     void DrawStartButton(UiContext c, Rect r)
@@ -156,6 +217,15 @@ public sealed class Taskbar
         }
     }
 
+    /// <summary>Opens or closes the Start menu, as the Start button and the
+    /// Windows key both do.</summary>
+    public void ToggleStart(UiContext c)
+    {
+        StartOpen = !StartOpen;
+        if (!StartOpen) _startClosedAt = c.Time;
+        c.Sound(StartOpen ? Sfx.MenuOpen : Sfx.MenuClose, 0.6f);
+    }
+
     public void CloseStart(UiContext c)
     {
         if (!StartOpen) return;
@@ -171,6 +241,19 @@ public sealed class Taskbar
 
         float gap = 3;
         float maxW = t.Id == ThemeId.Seven ? 168 : 160;
+
+        // Grouping only kicks in once the buttons would be too narrow to read,
+        // which is when XP does it too.
+        var groups = _shell.Settings.GroupSimilar && (area.W / wins.Count) < 90
+            ? wins.GroupBy(w => w.ProgramId ?? w.Title).Where(g => g.Count() > 1).ToList()
+            : null;
+
+        if (groups is { Count: > 0 })
+        {
+            DrawGroupedButtons(c, area, wins, groups, gap, maxW);
+            return;
+        }
+
         float w = MathF.Min(maxW, (area.W - gap * (wins.Count - 1)) / wins.Count);
         if (w < 26) w = 26;
 
@@ -224,15 +307,82 @@ public sealed class Taskbar
         }
     }
 
+    /// <summary>Draws one button per program instead of per window, the way the
+    /// taskbar does once it runs short of room. The button opens a menu of the
+    /// windows it stands for.</summary>
+    void DrawGroupedButtons(UiContext c, Rect area, List<OsWindow> wins,
+                            List<IGrouping<string, OsWindow>> groups, float gap, float maxW)
+    {
+        var t = c.Theme;
+
+        // Grouped programs first, then whatever was left ungrouped.
+        var buttons = new List<(string label, IconId icon, List<OsWindow> windows)>();
+        foreach (var group in groups)
+            buttons.Add((group.First().TaskbarTitle, group.First().Icon, group.ToList()));
+        foreach (var win in wins.Where(w => !groups.Any(g => g.Contains(w))))
+            buttons.Add((win.TaskbarTitle, win.Icon, new List<OsWindow> { win }));
+
+        float w = MathF.Min(maxW, (area.W - gap * (buttons.Count - 1)) / buttons.Count);
+        if (w < 26) w = 26;
+
+        float x = area.X;
+        foreach (var (label, icon, windows) in buttons)
+        {
+            if (x + w > area.Right + 1) break;
+            var r = new Rect(x, area.Y, w, area.H);
+            bool active = windows.Contains(_shell.Wm.Focused);
+            bool hover = c.Hovering(r);
+
+            Color top = active ? t.TaskButtonActive : hover ? t.TaskButtonFace.Shade(1.2f) : t.TaskButtonFace;
+            Color bot = active ? t.TaskButtonActive.Shade(1.15f) : t.TaskButtonFace.Shade(0.82f);
+            c.R.RoundedRectV(r, 3, top, bot, t.TaskButtonBorder, 1);
+
+            var ic = new Rect(r.X + 4, r.CenterY - 8, 16, 16);
+            Icons.Draw(c.R, icon, ic);
+
+            // The count sits where the window title would, as XP writes it.
+            string text = windows.Count > 1 ? $"{windows.Count}  {label}" : label;
+            var textArea = new Rect(ic.Right + 4, r.Y, r.Right - ic.Right - 8, r.H);
+            if (textArea.W > 8)
+            {
+                c.R.PushClip(textArea);
+                c.F.Ui.Draw(c.R, c.F.Ui.Ellipsize(text, textArea.W), textArea.X,
+                            r.CenterY - c.F.Ui.Height * 0.5f, t.TaskbarText);
+                c.R.PopClip();
+            }
+
+            c.Tooltip(r, text);
+
+            if (c.Clicked(r))
+            {
+                if (windows.Count == 1) { _shell.Wm.RestoreOrFocus(windows[0], c); CloseStart(c); }
+                else
+                {
+                    var group = windows;
+                    _shell.Menus.Open(group.Select(win => MenuItem.Of(win.TaskbarTitle,
+                        () => _shell.Wm.RestoreOrFocus(win, c), win.Icon)).ToList(),
+                        r.X, r.Y, this, c);
+                }
+            }
+
+            x += w + gap;
+        }
+    }
+
     /// <summary>Draws the notification area. When <paramref name="measureOnly"/> is
     /// set nothing is painted and only the required width is returned, so the task
     /// button strip knows where to stop.</summary>
     float DrawTray(UiContext c, Rect bar, bool measureOnly)
     {
         var t = c.Theme;
+        var settings = _shell.Settings;
         string clock = L.Time(_shell.Now);
-        float clockW = c.F.Ui.Measure(clock) + 12;
-        float iconArea = 3 * 18 + 8;
+        float clockW = settings.ShowClock ? c.F.Ui.Measure(clock) + 12 : 0;
+
+        // Hidden icons collapse to a single chevron until it is clicked.
+        bool collapsed = settings.HideInactiveIcons && !_trayExpanded;
+        int iconCount = collapsed ? 1 : 3;
+        float iconArea = iconCount * 18 + 8 + (settings.HideInactiveIcons ? 14 : 0);
         float langW = c.F.Ui.Measure("RU") + 12;
         float total = clockW + iconArea + langW + 14;
 
@@ -262,6 +412,17 @@ public sealed class Taskbar
         }
         x = langRect.Right + 6;
 
+        // The chevron that shows or hides the rest of the icons.
+        if (settings.HideInactiveIcons)
+        {
+            var chevron = new Rect(x, tray.CenterY - 8, 12, 16);
+            if (c.Hovering(chevron)) c.R.RoundedRect(chevron, 2, Color.Rgba(0xFFFFFF, 55));
+            W.Arrow(c, chevron, _trayExpanded ? 1 : 3, t.TaskbarText);
+            c.Tooltip(chevron, L.T(_trayExpanded ? "tray.hide_icons" : "tray.show_hidden_icons"));
+            if (c.Clicked(chevron)) { _trayExpanded = !_trayExpanded; c.Sound(Sfx.Click, 0.5f); }
+            x += 14;
+        }
+
         // Status icons.
         var trayIcons = new (IconId id, string tip, Action click)[]
         {
@@ -271,7 +432,7 @@ public sealed class Taskbar
             (IconId.Shield, "tray.security_center",
                 () => _shell.Launch(c, "notepad", _shell.Fs.AntivirusFile)),
         };
-        foreach (var (id, tip, click) in trayIcons)
+        foreach (var (id, tip, click) in collapsed ? trayIcons[..1] : trayIcons)
         {
             var ir = new Rect(x, tray.CenterY - 8, 16, 16);
             Icons.Draw(c.R, id, ir);
@@ -282,11 +443,13 @@ public sealed class Taskbar
             x += 18;
         }
 
-        // Clock.
-        var clockRect = new Rect(tray.Right - clockW, tray.Y, clockW, tray.H);
-        c.F.Ui.DrawCentered(c.R, clock, clockRect, t.TaskbarText);
-        c.Tooltip(clockRect, L.LongDate(_shell.Now));
-        if (c.Clicked(clockRect)) _shell.Launch(c, "clock", null);
+        if (settings.ShowClock)
+        {
+            var clockRect = new Rect(tray.Right - clockW, tray.Y, clockW, tray.H);
+            c.F.Ui.DrawCentered(c.R, clock, clockRect, t.TaskbarText);
+            c.Tooltip(clockRect, L.LongDate(_shell.Now));
+            if (c.Clicked(clockRect)) _shell.Launch(c, "clock", null);
+        }
 
         return total;
     }
@@ -367,7 +530,15 @@ public sealed class Taskbar
             MenuItem.Sep(),
             MenuItem.Of(L.T("taskbar.task_manager"), () => _shell.Launch(c, "taskmgr", null), IconId.Settings),
             MenuItem.Sep(),
-            MenuItem.Of(L.T("taskbar.properties"), () => _shell.Launch(c, "display", null), IconId.Display),
+            new MenuItem
+            {
+                Text = L.T("taskbar.lock_the_taskbar"),
+                Checked = _shell.Settings.LockTaskbar,
+                Click = () => _shell.Settings.LockTaskbar = !_shell.Settings.LockTaskbar,
+            },
+            MenuItem.Sep(),
+            MenuItem.Of(L.T("taskbar.properties"), () => _shell.Launch(c, "taskbarprops", null),
+                        IconId.Settings),
         };
         _shell.Menus.Open(items, c.MouseX, c.MouseY, this, c);
     }

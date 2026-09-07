@@ -53,7 +53,7 @@ public sealed class UpdateService
     public const string ManifestFile = "latest.txt";
 
     /// <summary>The version this build reports as installed.</summary>
-    public const string InstalledVersion = "7.1";
+    public const string InstalledVersion = "7.2";
 
     public static string RepositoryUrl => "https://github.com/" + Repository;
 
@@ -277,20 +277,43 @@ public sealed class UpdateService
             string install = AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar);
             string exe = Path.Combine(install, "MiminusOS.exe");
             string script = Path.Combine(StagingRoot, "install.cmd");
+
+            // The copy runs after this process is gone, so its output is the
+            // only evidence left if an update fails to take.
+            string log = Path.Combine(StagingRoot, "install.log");
             int pid = Environment.ProcessId;
 
             File.WriteAllText(script, $"""
                 @echo off
                 rem Written by the МИМИНУС update centre. Safe to delete.
+                setlocal
+
+                rem Wait for the OS to close.
                 :wait
                 tasklist /FI "PID eq {pid}" | find "{pid}" >nul
                 if not errorlevel 1 (
                     ping -n 2 127.0.0.1 >nul
                     goto wait
                 )
-                xcopy /E /I /Y "{Staging}" "{install}" >nul
+
+                rem Windows can hold a file open for a moment after the process
+                rem that owned it is gone, so the copy waits, and retries a few
+                rem times if it still runs into a lock.
+                set TRIES=0
+                :copy
+                ping -n 3 127.0.0.1 >nul
+                xcopy /E /I /Y "{Staging}" "{install}" >"{log}" 2>&1
+                if not errorlevel 1 goto installed
+                set /a TRIES=%TRIES%+1
+                if %TRIES% LSS 5 goto copy
+                echo update failed after %TRIES% attempts>>"{log}"
+                goto done
+
+                :installed
                 rd /s /q "{Path.Combine(StagingRoot, "staging")}" 2>nul
                 start "" "{exe}"
+
+                :done
                 del "%~f0"
                 """, System.Text.Encoding.Default);
 

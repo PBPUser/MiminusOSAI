@@ -75,11 +75,23 @@ progress blocks, an XP-style welcome screen, and a shutdown that ends on "it is
 now safe to turn off your computer".
 
 **Shell** — desktop with 55 icons, column-major grid layout, rubber-band
-selection, icon dragging with grid snap, and the full right-click menu including
-a working *Создать* submenu. Taskbar with Start button, quick launch, window
-buttons, notification area, a clickable RU/EN indicator, and the «Сервисное
-сообщение» balloon from part 1. XP two-column Start menu with a working *All
-Programs* tree.
+selection, icon dragging with grid snap, renaming in place (F2), and the full
+right-click menu including a working *Создать* submenu. Files and folders can be
+renamed anywhere they appear; a folder called Windows refuses to go until Ctrl is
+held, and then goes, and the system carries on — which is the whole point of that
+scene in part 3.
+
+Taskbar with Start button, quick launch, window buttons, notification area, a
+clickable RU/EN indicator, and the «Сервисное сообщение» balloon from part 1.
+Its property sheet works: locking shows or hides the grab handles, auto-hide
+really slides the bar away and hands the space back to maximised windows, "keep
+on top" is the order the layers are painted in, and grouping collapses several
+windows of one program into a single button once the bar runs short of room.
+
+The Windows key belongs to МИМИНУС while the window has the focus — a low-level
+hook takes it from the host shell — and opens the Start menu, with Win+E, Win+R,
+Win+F, Win+D, Win+U, Win+L and Win+Pause behind it. XP two-column Start menu with
+a working *All Programs* tree.
 
 **Window manager** — draggable and resizable windows with eight-way edge grips,
 z-order, focus, minimise/maximise/restore, modal dialogs that block their owner,
@@ -160,15 +172,29 @@ tools/                    build script, catalogue validator
 docs/FEATURES.md          what the reference videos show
 ```
 
-### Programs are DLLs
+### Programs are DLLs, loaded only when used
 
 A program is a class implementing `IProgram` — an id, a name key, an icon, and a
-factory that makes its window. Each lives in its own `Miminus.App.*.dll`, copied
-into `apps/` beside the executable and loaded by reflection at startup, so the
-shell never names a window type and adding a program means dropping in a DLL.
-The assemblies load into the default context, sharing the single copy of
-`Miminus.Core.dll` next to the host; a private copy would produce two
-incompatible sets of types.
+factory that makes its window. Each lives in its own `Miminus.App.*.dll` under
+`apps/` beside the executable, so the shell never names a window type and adding
+a program means dropping in a DLL.
+
+None of them is read at startup. What the Start menu needs — id, name, icon — is
+cached in `apps/programs.index`, keyed by each DLL's size and timestamp, so a
+normal boot opens no program assemblies at all. A DLL is read the first time one
+of its programs is actually launched, into its own **collectible** load context;
+when its last window closes and a grace period passes, the context is unloaded
+and the runtime reclaims it. `Miminus.Core` is deliberately resolved from the
+default context instead, so the shell and every program share one set of types.
+
+The command prompt's `apps` command lists what is resident, and `apps free`
+drops everything idle and reports whether the runtime finished the job:
+
+```
+Miminus.App.Notepad            загружена    1
+Miminus.App.Minesweeper        выгружена    0
+Загружено библиотек: 2. Программ всего: 23.
+```
 
 ### Mounting a real folder
 
@@ -178,16 +204,25 @@ text files are read on demand, and PNG and BMP images are decoded by the
 project's own decoders. Mounts are **read-only** unless `--mount-writable` is
 given, and host files are never deleted.
 
-### Updates
+### Updates, end to end
 
 `Центр обновления` reads `latest.txt` from
 [the project repository](https://github.com/PBPUser/MiminusOSAI): plain
-`key = value` lines naming the newest version, its release date, size, notes and
-download link. Publishing a new version is a one-file edit, and a fork can point
-the check somewhere else with `--update-url=`. When the repository is
-unreachable the centre falls back to the copy shipped beside the executable and
-says so — the network in this OS has always been "checked" rather than
-connected.
+`key = value` lines naming the newest version, its release date, size, notes,
+download page, and the built package with its SHA-256.
+
+Pressing *Установить обновление* carries it through: the package is streamed to
+`update/` and hashed as it arrives, a package whose hash was not published — or
+does not match — is refused before anything is unpacked, the archive is expanded
+beside the executable, and a one-shot script waits for the OS to exit, copies the
+staged build over the installation and starts it again. Publishing a new version
+is a one-file edit; a fork can point the check somewhere else with
+`--update-url=`, which also accepts a path (`tools/test-update.txt` exercises the
+whole cycle).
+
+When the repository is unreachable the centre falls back to the copy shipped
+beside the executable and says so — the network in this OS has always been
+"checked" rather than connected.
 
 ### How the rendering works
 

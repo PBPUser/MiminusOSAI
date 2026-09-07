@@ -28,6 +28,10 @@ internal static class Program
             using var shell = new ShellHost(audio);
 
             // Programs live in apps/ next to the executable, one DLL each.
+            // Whether this build has replaced an older one decides if the
+            // "what is new" tour appears; it is read before the first frame.
+            FirstRun.Check();
+
             shell.LoadPrograms(Path.Combine(AppContext.BaseDirectory, "apps"));
             if (opts.UpdateUrl != null) shell.Updates.Source = opts.UpdateUrl;
             Console.WriteLine($"Programs    : {shell.Programs.Count}");
@@ -310,6 +314,10 @@ internal static class Program
                         "esc" or "escape" => (Platform.Keys.Escape, (char?)null),
                         "del" or "delete" => (Platform.Keys.Delete, (char?)null),
                         "tab" => (Platform.Keys.Tab, (char?)null),
+                        "left" => (Platform.Keys.Left, (char?)null),
+                        "right" => (Platform.Keys.Right, (char?)null),
+                        "up" => (Platform.Keys.Up, (char?)null),
+                        "down" => (Platform.Keys.Down, (char?)null),
                         "f1" => (Platform.Keys.F1, (char?)null),
                         "f2" => (Platform.Keys.F2, (char?)null),
                         "f3" => (Platform.Keys.F3, (char?)null),

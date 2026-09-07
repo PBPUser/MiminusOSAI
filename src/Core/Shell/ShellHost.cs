@@ -156,6 +156,14 @@ public sealed class ShellHost : IDisposable
             ShowNetworkBalloon(c);
         }
 
+        // A build that has just replaced an older one introduces itself, once,
+        // after the desktop has settled.
+        if (FirstRun.JustUpdated && !FirstRun.Announced && Elapsed(c) > 2.5)
+        {
+            FirstRun.Announced = true;
+            Launch(c, "whatsnew", null);
+        }
+
         // The updater checks once shortly after logon, the way an XP-era system
         // did, and only speaks up when it has something to offer.
         if (!_updateCheckStarted && Elapsed(c) > 10)

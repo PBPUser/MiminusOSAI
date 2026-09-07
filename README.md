@@ -112,7 +112,8 @@ cascade and tile, and per-theme chrome.
 | Свойства: Экран | all five tabs, live monitor preview, wallpaper and theme switching. |
 | Командная строка | shell over the virtual filesystem — `dir`, `cd`, `type`, `start`, `color`, `scan`, `bolgenos`. |
 | Всё в одном | the utility that "is suitable for everything": invented months (бенабрь, нехабрь), temperature, weather, forms of address, and how to pronounce and decline «Михаил Гревцов» — spoken aloud through the speech engine Windows already has. |
-| Центр обновления | reads a version manifest published in the project's GitHub repository and offers whatever it announces. |
+| Центр обновления | reads a version manifest published in the project's GitHub repository, then downloads, verifies, unpacks and installs what it announces. |
+| Что нового | the tour the system shows itself the first time it starts after an update — nine cards, each illustration built from the same icons and rectangles as the rest of the OS. |
 | | plus Task Manager, Control Panel, Sound properties, Properties sheets, Open With, Run, About, Распознавание голоса (which listens, thinks, and admits it is unfinished). |
 
 **Themes** — XP Luna in blue, olive and silver, a Windows-7 pastiche for

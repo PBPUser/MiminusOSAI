@@ -40,6 +40,8 @@
                       Private="false" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Apps\Player\Miminus.App.Player.csproj"
                       Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\Presentation\Miminus.App.Presentation.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Apps\Sheet\Miminus.App.Sheet.csproj"
                       Private="false" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Apps\System\Miminus.App.System.csproj"

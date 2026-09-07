@@ -6,14 +6,14 @@
 # published package, so Проверить → Установить runs the whole path:
 # download, checksum, unpack, swap, restart.
 
-version  = 7.2
-name     = МИМИНУС ОС 7.2 (проверка обновления)
-name.en  = MIMINUS OS 7.2 (update test)
+version  = 7.3
+name     = МИМИНУС ОС 7.3 (проверка обновления)
+name.en  = MIMINUS OS 7.3 (update test)
 released = 2026-09-07
-size     = 394 КБ
-size.en  = 394 KB
+size     = 421 КБ
+size.en  = 421 KB
 url      = https://github.com/PBPUser/MiminusOSAI
-package  = https://raw.githubusercontent.com/PBPUser/MiminusOSAI/main/dist/MiminusOS-7.1.zip
-sha256   = 6C519ED312F685740A5A30DD6FF2C667C433157939EB28EF4B96FF483DB300B1
+package  = https://raw.githubusercontent.com/PBPUser/MiminusOSAI/main/dist/MiminusOS-7.2.zip
+sha256   = 88885E437F1CC1675E41330A595DF1B3E597C856056873903F0B42B83F2349AB
 notes    = Тестовый манифест: пакет тот же, версия завышена нарочно.
 notes.en = A test manifest: the same package, with the version deliberately raised.

@@ -273,6 +273,7 @@ public sealed class StartMenu
             MenuItem.Of(L.T("start.task_manager"), () => Go(c, "taskmgr", null), IconId.Settings),
             MenuItem.Of(L.T("start.display_properties"), () => Go(c, "display", null), IconId.Display),
             MenuItem.Of(L.T("start.windows_update"), () => Go(c, "update", null), IconId.Shield),
+            MenuItem.Of(L.T("whatsnew.title"), () => Go(c, "whatsnew", null), IconId.Star),
         };
 
         var items = new List<MenuItem>

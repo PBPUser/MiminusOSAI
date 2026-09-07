@@ -8,6 +8,7 @@
   <Project Path="Apps/Notepad/Miminus.App.Notepad.csproj" />
   <Project Path="Apps/Paint/Miminus.App.Paint.csproj" />
   <Project Path="Apps/Player/Miminus.App.Player.csproj" />
+  <Project Path="Apps/Presentation/Miminus.App.Presentation.csproj" />
   <Project Path="Apps/Sheet/Miminus.App.Sheet.csproj" />
   <Project Path="Apps/System/Miminus.App.System.csproj" />
   <Project Path="Apps/Update/Miminus.App.Update.csproj" />

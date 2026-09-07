@@ -15,8 +15,8 @@ name.en   = MIMINUS OS 7.2
 codename  = Наш ответ BOLGENOS, Service Pack 2
 codename.en = Our answer to BOLGENOS, Service Pack 2
 released  = 2026-09-07
-size      = 404 КБ
-size.en   = 404 KB
+size      = 421 КБ
+size.en   = 421 KB
 
 # Страница проекта, показываемая в центре обновления.
 url       = https://github.com/PBPUser/MiminusOSAI
@@ -27,13 +27,14 @@ download  = https://github.com/PBPUser/MiminusOSAI/archive/refs/heads/main.zip
 # Собранный пакет, который центр обновления скачивает и устанавливает сам.
 # Контрольная сумма обязательна: без неё пакет будет отклонён.
 package   = https://raw.githubusercontent.com/PBPUser/MiminusOSAI/main/dist/MiminusOS-7.2.zip
-sha256    = 089DAB527635E44CF7407C223D62A21EF8EF32D1C6C91C09BF8C4C7C7E935ED8
+sha256    = 88885E437F1CC1675E41330A595DF1B3E597C856056873903F0B42B83F2349AB
 
 notes     = Добавлено: центр обновления устанавливает обновления сам — загрузка, проверка контрольной суммы, распаковка и перезапуск.
 Добавлено: переименование папок и файлов на месте (F2).
 Добавлено: свойства панели задач — закрепление, автоскрытие, группировка кнопок, быстрый запуск, часы.
 Добавлено: клавиша Windows и сочетания с ней.
 Добавлено: папка Windows удаляется с зажатым Ctrl, и система продолжает работать.
+Добавлено: после обновления система показывает презентацию «Что нового».
 Добавлено: произношение и склонение «Михаил Гревцов» во «Всё в одном».
 Изменено: библиотеки программ загружаются по требованию и выгружаются, когда не нужны.
 notes.en  = Added: the update centre installs updates itself — download, checksum, unpack, restart.
@@ -41,5 +42,6 @@ Added: renaming folders and files in place (F2).
 Added: taskbar properties — locking, auto-hide, button grouping, quick launch, clock.
 Added: the Windows key and its combinations.
 Added: a Windows folder deletes with Ctrl held, and the system carries on.
+Added: after an update the system shows a “What is new” presentation.
 Added: pronunciation and declension of «Михаил Гревцов» in All-in-One.
 Changed: program libraries load on demand and unload when no longer needed.

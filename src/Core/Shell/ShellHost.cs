@@ -101,6 +101,10 @@ public sealed class ShellHost : IDisposable
     int _postShown;
     double _postNext;
 
+    /// <summary>Set once the BIOS has been right-clicked: the POST then stops
+    /// booting on its own and waits, the way it would if a key had stopped it.</summary>
+    bool _postHeld;
+
     public ShellHost(AudioEngine audio)
     {
         Audio = audio;
@@ -631,6 +635,9 @@ public sealed class ShellHost : IDisposable
 
     void DrawPost(UiContext c)
     {
+        // The menu sits above the screen and so answers for the pointer first.
+        Menus.Update(c);
+
         c.R.Clear(Color.Black);
 
         if (c.Time >= _postNext && _postShown < _postLines.Count)
@@ -651,14 +658,76 @@ public sealed class ShellHost : IDisposable
         if (_postShown >= _postLines.Count && (int)(c.Time * 2) % 2 == 0)
             c.R.FillRect(new Rect(32, y, 9, c.F.Mono.Height), Color.Rgb(0xD8D8D8));
 
-        c.F.Mono.Draw(c.R, "Press DEL to enter SETUP", 32, c.ScreenH - 40, Color.Rgb(0x808080));
+        c.F.Mono.Draw(c.R, _postHeld ? L.T("bios.held") : "Press DEL to enter SETUP",
+                      32, c.ScreenH - 40, Color.Rgb(0x808080));
 
-        bool skip = c.In.Pressed(MouseButton.Left) || c.In.TypedChars.Count > 0 ||
-                    c.In.KeyPressed(Keys.Escape) || c.In.KeyPressed(Keys.Space);
+        PostContextMenu(c);
+        Menus.Draw(c);
+
+        // A click that opened or worked the menu is not a click on the BIOS.
+        bool skip = !c.MouseHandled && !Menus.IsOpen &&
+                    (c.In.Pressed(MouseButton.Left) || c.In.TypedChars.Count > 0 ||
+                     c.In.KeyPressed(Keys.Escape) || c.In.KeyPressed(Keys.Space));
         if (skip) _postShown = _postLines.Count;
 
-        if (_postShown >= _postLines.Count && (c.Time - _postNext > 0.7 || skip))
+        // Once somebody has opened the menu the machine waits for them, the way
+        // a BIOS waits when a key stops it. Anything else still boots it.
+        bool waiting = _postHeld || Menus.IsOpen;
+        if (_postShown >= _postLines.Count && ((c.Time - _postNext > 0.7 && !waiting) || skip))
             SetPhase(ShellPhase.Booting, c);
+    }
+
+    /// <summary>The context menu of the BIOS.
+    ///
+    /// A BIOS has no pointer and no menus: it has a key you press and a blue
+    /// table of settings. So of course this one has the menu the rest of the
+    /// system has — right-click the POST screen and the same shaded strip comes
+    /// up over the memory count, offering to look for BOLGENOS again.</summary>
+    void PostContextMenu(UiContext c)
+    {
+        if (!c.In.Pressed(MouseButton.Right) || c.MouseHandled) return;
+
+        _postHeld = true;
+        _postShown = _postLines.Count;
+
+        Menus.Open(new List<MenuItem>
+        {
+            MenuItem.Of(L.T("bios.continue"), () =>
+            {
+                _postHeld = false;
+                SetPhase(ShellPhase.Booting, c);
+            }, IconId.Program),
+            MenuItem.Sep(),
+            MenuItem.Of(L.T("bios.retest_memory"), () => PostSay("Memory Testing : 2097152K OK")),
+            MenuItem.Of(L.T("bios.detect_drives"), () =>
+            {
+                PostSay("Detecting IDE drives ...");
+                PostSay("  Primary Master   : МИМИНУС HDD 80GB");
+                PostSay("  Primary Slave    : МИМИНУС HDD 160GB");
+                PostSay("  Secondary Master : МИМИНУС DVD-RW");
+            }),
+            MenuItem.Of(L.T("bios.find_bolgenos"),
+                        () => PostSay("Auto-Detecting BOLGENOS ....... Not found.")),
+            MenuItem.Sep(),
+            MenuItem.Of(L.T("bios.setup"), () => PostSay(L.T("bios.setup_locked")), IconId.Shield),
+            MenuItem.Sep(),
+
+            // Every context menu in this system ends in «Свойства», so this one
+            // does too, and what a BIOS has to say about itself is its own name.
+            MenuItem.Of(L.T("desktop.properties"), () =>
+            {
+                PostSay("");
+                PostSay(_postLines[0]);
+                PostSay(L.F("bios.owner", UserName));
+            }, IconId.DlgInfo),
+        }, c.MouseX, c.MouseY, this, c);
+    }
+
+    /// <summary>Adds a line to the POST and lets it type itself out.</summary>
+    void PostSay(string line)
+    {
+        _postLines.Add(line);
+        _postNext = 0;
     }
 
     /// <summary>The loading screen.

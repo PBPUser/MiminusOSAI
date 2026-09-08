@@ -53,7 +53,7 @@ public sealed class UpdateService
     public const string ManifestFile = "latest.txt";
 
     /// <summary>The version this build reports as installed.</summary>
-    public const string InstalledVersion = "8.0";
+    public const string InstalledVersion = "8.0.1";
 
     public static string RepositoryUrl => "https://github.com/" + Repository;
 
@@ -386,27 +386,58 @@ public sealed class UpdateService
         catch { return null; }
     }
 
+    /// <summary>True for a line that opens a field: an ASCII name, perhaps with
+    /// a language suffix, and then the equals sign.
+    ///
+    /// Anything else is prose. That is what tells a release note from a key
+    /// even when the note has an equals sign in the middle of it — «--open=scan»
+    /// is a sentence about the system, not a field called «--open».</summary>
+    static bool IsFieldLine(string line, out int eq)
+    {
+        eq = line.IndexOf('=');
+        if (eq <= 0) return false;
+
+        for (int i = 0; i < eq; i++)
+        {
+            char ch = line[i];
+            bool ok = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')
+                   || (ch >= '0' && ch <= '9')
+                   || ch == '.' || ch == '_' || ch == '-' || ch == ' ' || ch == '\t';
+            if (!ok) return false;
+        }
+        return true;
+    }
+
     /// <summary>Parses the <c>key = value</c> manifest. Keys may carry a
     /// language suffix (<c>name.en</c>), which wins when that language is
-    /// selected.</summary>
+    /// selected.
+    ///
+    /// A line that does not open a field carries on the one above it, so the
+    /// release notes can be written as the list they are — one change to a line
+    /// — instead of one long line with escaped newlines buried in it.</summary>
     public static UpdateInfo Parse(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
 
         var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        string current = null;
         foreach (string raw in text.Split('\n'))
         {
             string line = raw.Trim();
             if (line.Length == 0 || line[0] == '#') continue;
 
-            int eq = line.IndexOf('=');
-            if (eq <= 0) continue;
+            if (!IsFieldLine(line, out int eq))
+            {
+                if (current != null) fields[current] += "\n" + line;
+                continue;
+            }
 
             string key = line[..eq].Trim();
-            // The manifest is a single line per field, so an escaped newline is
-            // the only way to write a multi-line release note.
-            string value = line[(eq + 1)..].Trim().Replace("\\n", "\n");
-            if (key.Length != 0) fields[key] = value;
+            if (key.Length == 0) { current = null; continue; }
+
+            // An escaped newline still works, for a note written on one line.
+            fields[key] = line[(eq + 1)..].Trim().Replace("\\n", "\n");
+            current = key;
         }
 
         if (fields.Count == 0) return null;

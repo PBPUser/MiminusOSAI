@@ -79,6 +79,11 @@ dotnet run --project src/Host -- --theme=seven --wallpaper=seven --lang=en
 progress blocks, an XP-style welcome screen, and a shutdown that ends on "it is
 now safe to turn off your computer".
 
+**Stopping** — anything that escapes a frame takes the system down on its own
+blue screen: an invented stop code over the real exception type, message and the
+top of the stack, then a memory dump that counts to 100 and a key press that
+restarts into POST. `crash` at the command prompt raises one on purpose.
+
 **Shell** — desktop with 55 icons, column-major grid layout, rubber-band
 selection, icon dragging with grid snap, renaming in place (F2), and the full
 right-click menu including a working *Создать* submenu. Files and folders can be

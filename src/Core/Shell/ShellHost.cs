@@ -6,7 +6,7 @@ using Miminus.UI;
 
 namespace Miminus.Shell;
 
-public enum ShellPhase { Post, Booting, Welcome, Running, LoggingOff, ShuttingDown, PoweredOff }
+public enum ShellPhase { Post, Booting, Welcome, Running, LoggingOff, ShuttingDown, PoweredOff, Stopped }
 
 /// <summary>The operating system itself: boot sequence, desktop, taskbar, the
 /// window manager and the program launcher.
@@ -128,11 +128,14 @@ public sealed class ShellHost : IDisposable
             case ShellPhase.LoggingOff: DrawLogOff(c); break;
             case ShellPhase.ShuttingDown: DrawShuttingDown(c); break;
             case ShellPhase.PoweredOff: DrawPoweredOff(c); break;
+            case ShellPhase.Stopped: DrawBlueScreen(c); break;
             default: DrawDesktopSession(c); break;
         }
 
         DrawTooltip(c);
-        DrawCursor(c);
+        // A stopped system has no pointer: nothing on that screen can be
+        // clicked, and the original never showed one either.
+        if (!Stopped) DrawCursor(c);
     }
 
     void SetPhase(ShellPhase p, UiContext c)
@@ -487,6 +490,61 @@ public sealed class ShellHost : IDisposable
     {
         Audio.Play(Sfx.Logoff, 0.8f);
         SetPhase(ShellPhase.LoggingOff, c);
+    }
+
+    BlueScreen _stop;
+
+    /// <summary>True once the system has stopped on an error and is showing
+    /// the reason. The host stops asking it to do anything else.</summary>
+    public bool Stopped => Phase == ShellPhase.Stopped;
+
+    /// <summary>Takes the system down on an unhandled error. Everything that
+    /// could throw again — audio, the window list, the drag in progress — is
+    /// let go of first, so the screen that explains the fault cannot cause a
+    /// second one.</summary>
+    public void Crash(UiContext c, Exception ex)
+    {
+        if (Stopped) return;
+
+        _stop = new BlueScreen(ex, c.Time);
+        SetPhase(ShellPhase.Stopped, c);
+
+        try
+        {
+            Audio.StopMusic();
+            Audio.Muted = true;
+            Menus.Close();
+            Drag.Cancel();
+        }
+        catch
+        {
+            // Whatever state the system was left in, the report still shows.
+        }
+
+        Console.Error.WriteLine(ex);
+    }
+
+    void DrawBlueScreen(UiContext c)
+    {
+        _stop?.Draw(c, c.Time);
+
+        // The only way out is a restart, which is where the videos leave it too.
+        if (_stop != null && _stop.DumpComplete(c.Time) && BlueScreen.RestartRequested(c))
+            Restart(c);
+    }
+
+    /// <summary>Back to POST with everything closed, as after a real stop.</summary>
+    public void Restart(UiContext c)
+    {
+        _stop = null;
+        Wm.CloseAll(c);
+        Audio.Muted = false;
+        _startupSoundPlayed = false;
+        _networkBalloonShown = false;
+        _updateCheckStarted = false;
+        _postShown = 0;
+        _postNext = 0;
+        SetPhase(ShellPhase.Post, c);
     }
 
     public void BeginShutdown(UiContext c)

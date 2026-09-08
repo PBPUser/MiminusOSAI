@@ -191,7 +191,16 @@ internal static class Program
                 renderer.Begin(window.Width, window.Height, scale);
                 renderer.Clear(Color.Black);
 
-                shell.Frame(ctx);
+                // Anything that escapes a frame stops the system on its own
+                // blue screen rather than closing the window from under it.
+                try
+                {
+                    shell.Frame(ctx);
+                }
+                catch (Exception ex) when (!shell.Stopped)
+                {
+                    shell.Crash(ctx, ex);
+                }
 
                 // The update centre has staged a new build and the installer is
                 // waiting for this process to end.

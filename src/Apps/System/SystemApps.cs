@@ -227,6 +227,13 @@ public sealed class TerminalWindow : OsWindow
                 break;
             }
 
+            // Throws on purpose, so the stop screen can be seen without
+            // waiting for a real fault.
+            case "crash":
+                Echo("");
+                Echo(L.T("sys.crash_warning"));
+                throw new InvalidOperationException(L.T("sys.crash_message"));
+
             case "ver":
                 Echo("");
                 Echo(L.T("sys.miminus_os_version_7_0_2010"));

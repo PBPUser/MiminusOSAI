@@ -88,6 +88,10 @@ in vec2 vPos;
 
 uniform sampler2D uTex;
 
+// Levels per channel the colour is reduced to, or 0 to leave it alone. This is
+// what the colour-quality setting does: 16-bit really does band.
+uniform float uLevels;
+
 out vec4 FragColor;
 
 // Signed distance to a rounded box centred at the origin.
@@ -134,6 +138,10 @@ void main()
     }
 
     if (col.a <= 0.002) discard;
+
+    if (uLevels > 0.5)
+        col.rgb = floor(col.rgb * uLevels + 0.5) / uLevels;
+
     FragColor = col;
 }
 ";
@@ -187,8 +195,25 @@ void main()
 
     // ---- frame -----------------------------------------------------------
 
-    public void Begin(int screenW, int screenH)
+    /// <summary>Size of the coordinate space this frame is being drawn in,
+    /// which is the window size divided by the DPI scale.</summary>
+    public int ScreenW => _screenW;
+    public int ScreenH => _screenH;
+
+    /// <summary>Levels per channel every colour is snapped to, or 0 for none.
+    /// Set from Display Properties → Качество цветопередачи.</summary>
+    public float ColorLevels;
+
+    /// <summary>Starts a frame.
+    ///
+    /// <paramref name="scale"/> is the DPI scale: the viewport stays the size
+    /// of the window, while the coordinate space shrinks by the scale, so every
+    /// window, glyph and icon is drawn larger without any of them knowing.</summary>
+    public void Begin(int viewportW, int viewportH, float scale = 1)
     {
+        int screenW = (int)MathF.Round(viewportW / scale);
+        int screenH = (int)MathF.Round(viewportH / scale);
+
         _screenW = screenW;
         _screenH = screenH;
         DrawCalls = 0;
@@ -197,7 +222,7 @@ void main()
         SetClip(FullScreen);
         _currentTex = _white.Id;
 
-        GL.Viewport(0, 0, screenW, screenH);
+        GL.Viewport(0, 0, viewportW, viewportH);
         GL.Disable(GL.DEPTH_TEST);
         GL.Enable(GL.BLEND);
         GL.BlendFuncSeparate(GL.SRC_ALPHA, GL.ONE_MINUS_SRC_ALPHA, GL.ONE, GL.ONE_MINUS_SRC_ALPHA);
@@ -205,6 +230,7 @@ void main()
         _shader.Use();
         _shader.Set("uScreen", (float)screenW, (float)screenH);
         _shader.Set("uTex", 0);
+        _shader.Set("uLevels", ColorLevels);
     }
 
     public void End() => Flush();
@@ -226,6 +252,7 @@ void main()
 
         _shader.Use();
         _shader.Set("uScreen", (float)_screenW, (float)_screenH);
+        _shader.Set("uLevels", ColorLevels);
         GL.ActiveTexture(GL.TEXTURE0);
         GL.BindTexture(GL.TEXTURE_2D, _currentTex);
         GL.DrawElements(GL.TRIANGLES, _quadCount * 6, GL.UNSIGNED_INT, 0);

@@ -22,6 +22,11 @@ public sealed class ExplorerWindow : OsWindow
     VNode _renaming;
     string _renameText = "";
 
+    /// <summary>Item pressed but not yet dragged, and where the press landed.
+    /// A drag starts once the pointer has moved far enough to mean it.</summary>
+    VNode _pressed;
+    float _pressX, _pressY;
+
 
     readonly List<VNode> _history = new();
     int _historyIndex = -1;
@@ -207,7 +212,11 @@ public sealed class ExplorerWindow : OsWindow
         // keyboard while it is open, so none of this fires underneath it.
         if (!c.KeyboardHandled)
         {
-            if (c.In.KeyPressed(Keys.F2) && _selected != null) BeginRename(_selected);
+            // Part 3: the folder called Windows is selected, Ctrl is pressed,
+            // and it goes. No Delete, no confirmation — just Ctrl.
+            if (c.In.KeyPressed(Keys.Control) && VirtualFS.IsWindowsFolder(_selected))
+                DeleteWindowsFolder(c, _selected);
+            else if (c.In.KeyPressed(Keys.F2) && _selected != null) BeginRename(_selected);
             else if (c.In.KeyPressed(Keys.Back)) GoUp(c);
             else if (c.In.KeyPressed(Keys.Delete) && _selected != null) DeleteSelected(c);
             else if (c.In.KeyPressed(Keys.Enter) && _selected != null) Open(_selected);
@@ -580,6 +589,13 @@ public sealed class ExplorerWindow : OsWindow
                                    _scroll, contentH, view.H);
         else _scroll = 0;
 
+        // The view is the fallback drop target: anything let go over it that a
+        // folder item did not claim lands in the folder being shown.
+        if (Shell.Drag.Offer(c, view, _folder, this))
+            c.R.DrawRect(view.Deflate(1), c.Theme.Selection);
+
+        BeginDragIfMoved(c);
+
         // Empty space: clear selection, or open the folder context menu.
         if (c.Clicked(area)) _selected = null;
         else if (c.RightClicked(area))
@@ -703,9 +719,20 @@ public sealed class ExplorerWindow : OsWindow
 
         if (!string.IsNullOrEmpty(node.Tooltip)) c.Tooltip(cell, node.Tooltip);
 
-        if (c.DoubleClicked(cell)) { _selected = node; Open(node); }
-        else if (c.Clicked(cell)) { _selected = node; c.SoundAt(Sfx.Tick, cell, 0.25f); }
+        if (c.DoubleClicked(cell)) { _selected = node; Open(node); _pressed = null; }
+        else if (c.Clicked(cell))
+        {
+            _selected = node;
+            _pressed = node;
+            _pressX = c.MouseX;
+            _pressY = c.MouseY;
+            c.SoundAt(Sfx.Tick, cell, 0.25f);
+        }
         else if (c.RightClicked(cell)) { _selected = node; ShowItemMenu(c, node); }
+
+        // A folder under the pointer takes the drop instead of the view.
+        if (node.IsContainer && Shell.Drag.Offer(c, cell, node, node))
+            c.R.DrawRect(cell.Deflate(1), t.Selection);
     }
 
     static void DrawNodeIcon(UiContext c, VNode node, Rect rect)
@@ -745,6 +772,20 @@ public sealed class ExplorerWindow : OsWindow
     {
         if (node.IsContainer) { Navigate(node, _ctx); return; }
         Shell.Launch(_ctx, node.Launch, node);
+    }
+
+    /// <summary>Turns a press that has travelled far enough into a drag. The
+    /// threshold keeps an ordinary click from picking the file up.</summary>
+    void BeginDragIfMoved(UiContext c)
+    {
+        if (_pressed == null) return;
+
+        if (!c.In.IsDown(MouseButton.Left)) { _pressed = null; return; }
+        if (Shell.Drag.Dragging) return;
+        if (MathF.Abs(c.MouseX - _pressX) < 5 && MathF.Abs(c.MouseY - _pressY) < 5) return;
+
+        Shell.Drag.Begin(_pressed, _pressed.Icon, _pressed.Name, this);
+        _pressed = null;
     }
 
     // ---- renaming in place ------------------------------------------------
@@ -813,6 +854,18 @@ public sealed class ExplorerWindow : OsWindow
 
         Shell.MessageBox(c, L.T("explorer.rename_failed_title"), error,
                          MsgButtons.Ok, IconId.DlgError, null, Sfx.Error);
+    }
+
+    /// <summary>Removes the Windows folder outright and says what everybody in
+    /// the video is waiting to hear.</summary>
+    void DeleteWindowsFolder(UiContext c, VNode folder)
+    {
+        Shell.Fs.Delete(folder, permanent: true);
+        if (_selected == folder) _selected = null;
+        Shell.Audio.Play(Sfx.Trash, 0.8f);
+
+        Shell.MessageBox(c, L.T("shell.miminus_os"), L.T("fs.windows_deleted"),
+                         MsgButtons.Ok, IconId.DlgInfo, null, Sfx.Info);
     }
 
     void DeleteSelected(UiContext c)

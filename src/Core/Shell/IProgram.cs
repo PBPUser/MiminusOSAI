@@ -43,6 +43,10 @@ public sealed class ProgramEntry
     public string TypeName;
 
     public string AssemblyName => Path.GetFileNameWithoutExtension(AssemblyPath);
+
+    /// <summary>True for a program that did not ship with the system: someone
+    /// dropped its DLL into apps/. It is loaded exactly like the others.</summary>
+    public bool Custom => !AssemblyName.StartsWith("Miminus.App.", StringComparison.Ordinal);
 }
 
 /// <summary>One program assembly and the context it is loaded into.
@@ -62,13 +66,15 @@ sealed class AppAssembly
 
         protected override Assembly Load(AssemblyName name)
         {
-            // Anything the host already has — Core included — comes from the
-            // default context. Only a program's own private dependencies, if it
-            // ever grows one, are loaded here.
+            // Anything the host already has — Core, and the framework — comes
+            // from the default context, so the shell and the program share one
+            // set of types. What is left is a program's own private dependency,
+            // which a custom app may well have, and it is loaded from the
+            // folder the program was found in.
+            if (Default.Assemblies.Any(a => a.GetName().Name == name.Name)) return null;
+
             string candidate = System.IO.Path.Combine(_directory, name.Name + ".dll");
-            return File.Exists(candidate) && name.Name.StartsWith("Miminus.App.", StringComparison.Ordinal)
-                ? LoadFromAssemblyPath(candidate)
-                : null;
+            return File.Exists(candidate) ? LoadFromAssemblyPath(candidate) : null;
         }
     }
 
@@ -152,13 +158,32 @@ public sealed class ProgramRegistry
 
     // ---- discovery --------------------------------------------------------
 
-    /// <summary>Catalogues every Miminus.App.*.dll in a directory without
-    /// loading any of them, when the cached index is still good for it.</summary>
+    /// <summary>Assemblies that are the host itself, never program candidates.</summary>
+    static readonly string[] NotPrograms = { "Miminus.Core", "MiminusOS" };
+
+    /// <summary>Catalogues the programs in a directory without loading any
+    /// assembly the cached index already covers.
+    ///
+    /// Every DLL is a candidate, not only the ones that shipped with the
+    /// system: dropping <c>MyProgram.dll</c> into <c>apps/</c> — or into a
+    /// folder of its own under it, alongside whatever it depends on — is all
+    /// it takes to add a program. What each one offers is found by reflection
+    /// the first time it is seen and remembered in the index, so an assembly
+    /// that turns out to hold no programs is never opened twice.</summary>
     public int LoadFrom(string directory)
     {
         if (!Directory.Exists(directory)) return 0;
 
-        var files = Directory.EnumerateFiles(directory, "Miminus.App.*.dll").OrderBy(p => p).ToList();
+        // The directory itself, and one level below it so a custom program can
+        // keep its dependencies to itself.
+        var files = Directory.EnumerateFiles(directory, "*.dll")
+            .Concat(Directory.EnumerateDirectories(directory)
+                             .Where(d => Path.GetFileName(d) != "staging")
+                             .SelectMany(d => Directory.EnumerateFiles(d, "*.dll")))
+            .Where(f => !NotPrograms.Contains(Path.GetFileNameWithoutExtension(f)))
+            .OrderBy(p => p)
+            .ToList();
+
         var cached = ReadIndex(Path.Combine(directory, IndexFile));
         bool indexStale = false;
 
@@ -168,6 +193,8 @@ public sealed class ProgramRegistry
             _assemblies[path] = assembly;
 
             string stamp = Stamp(path);
+            _scanned.Add(stamp);
+
             if (cached.TryGetValue(stamp, out var entries))
             {
                 foreach (var entry in entries) _byId[entry.Id] = entry;
@@ -175,7 +202,7 @@ public sealed class ProgramRegistry
             }
 
             // Nothing cached for this build of the DLL: read it once to find
-            // out what it offers, then let it go again.
+            // out what it offers — possibly nothing — then let it go again.
             indexStale = true;
             foreach (var entry in Harvest(assembly)) _byId[entry.Id] = entry;
             assembly.Unload();
@@ -186,6 +213,13 @@ public sealed class ProgramRegistry
 
         return _byId.Count;
     }
+
+    /// <summary>Stamps seen this run, so the index can record an assembly that
+    /// declared no programs and spare the next start from opening it.</summary>
+    readonly HashSet<string> _scanned = new(StringComparer.Ordinal);
+
+    /// <summary>Programs that did not ship with the system.</summary>
+    public IEnumerable<ProgramEntry> Custom => _byId.Values.Where(e => e.Custom);
 
     /// <summary>Opens an assembly to read the programs it declares.</summary>
     List<ProgramEntry> Harvest(AppAssembly assembly)
@@ -381,11 +415,17 @@ public sealed class ProgramRegistry
         try
         {
             var lines = new List<string> { "miminus-programs " + IndexVersion };
+            var byAssembly = _byId.Values.GroupBy(e => e.AssemblyPath)
+                                         .ToDictionary(g => Stamp(g.Key), g => g.ToList());
 
-            foreach (var group in _byId.Values.GroupBy(e => e.AssemblyPath).OrderBy(g => g.Key))
+            // Every assembly scanned gets a header, including the ones that
+            // declared nothing: that is the answer worth remembering.
+            foreach (string stamp in _scanned.OrderBy(x => x, StringComparer.Ordinal))
             {
-                lines.Add(Stamp(group.Key));
-                foreach (var e in group.OrderBy(e => e.Id))
+                lines.Add(stamp);
+                if (!byAssembly.TryGetValue(stamp, out var entries)) continue;
+
+                foreach (var e in entries.OrderBy(e => e.Id))
                     lines.Add($"\t{e.Id}|{e.NameKey}|{e.Icon}|{(e.Singleton ? 1 : 0)}|{e.TypeName}");
             }
 

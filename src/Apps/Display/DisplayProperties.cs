@@ -335,7 +335,12 @@ public sealed class DisplayPropertiesWindow : OsWindow
             L.T("display.high_24_bit"),
             L.T("display.highest_32_bit"),
         };
-        W.ComboBox(c, Id + ".depth", new Rect(body.X + half + 30, y + 32, half - 28, 22), depths, ref _colorDepthIndex);
+        // The picture really is reduced: 16-bit bands every gradient in the
+        // system, because the shader snaps each channel to 32 levels.
+        int depth = Shell.Settings.ColorDepth switch { 16 => 0, 24 => 1, _ => 2 };
+        if (W.ComboBox(c, Id + ".depth", new Rect(body.X + half + 30, y + 32, half - 28, 22),
+                       depths, ref depth))
+            Shell.Settings.ColorDepth = depth switch { 0 => 16, 1 => 24, _ => 32 };
 
         var note = new Rect(body.X, y + 100, body.W, body.H - (y + 100 - body.Y));
         c.F.Small.Draw(c.R,
@@ -344,6 +349,6 @@ public sealed class DisplayPropertiesWindow : OsWindow
 
         if (W.Button(c, Id + ".advanced", new Rect(note.Right - 130, note.Y + 24, 130, 24),
                      L.T("display.advanced")))
-            Wm.Open(new AdvancedSettingsWindow(), c);
+            Wm.Open(new AdvancedSettingsWindow(Shell.Settings), c);
     }
 }

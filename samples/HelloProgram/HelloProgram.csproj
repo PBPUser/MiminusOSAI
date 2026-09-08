@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A custom program for МИМИНУС ОС.
+
+       It is not part of the solution: it references the engine as a file, the
+       way anyone outside this repository would, and its output is copied into
+       the OS's apps/ folder by hand. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Hello</RootNamespace>
+    <AssemblyName>HelloProgram</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <NoWarn>CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The single copy of the engine next to MiminusOS.exe satisfies this at
+         run time; a private copy would create a second, incompatible set of
+         types, so it is never copied to the output. -->
+    <Reference Include="Miminus.Core">
+      <HintPath>..\..\src\Core\bin\Release\net10.0-windows\Miminus.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

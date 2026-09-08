@@ -24,6 +24,9 @@ public sealed class ShellHost : IDisposable
     /// <summary>Programs discovered in the apps/ folder.</summary>
     public readonly ProgramRegistry Programs = new();
 
+    /// <summary>A file, folder or shortcut being carried between windows.</summary>
+    public DragDropHost Drag;
+
     /// <summary>«Центр обновления» — checks the project repository for a newer
     /// build. Owned by the shell so the tray can announce a finding even when
     /// the update window is closed.</summary>
@@ -66,6 +69,7 @@ public sealed class ShellHost : IDisposable
         Audio = audio;
         Wm.Shell = this;
         Desktop = new Desktop(this);
+        Drag = new DragDropHost(this);
         Taskbar = new Taskbar(this);
         StartMenu = new StartMenu(this);
 
@@ -195,6 +199,7 @@ public sealed class ShellHost : IDisposable
         bool overChrome =
             Menus.HitTest(c.MouseX, c.MouseY) ||
             (!Taskbar.Retracted && Taskbar.Bounds(c).Contains(c.MouseX, c.MouseY)) ||
+            Taskbar.VolumeBounds(c).Contains(c.MouseX, c.MouseY) ||
             (Taskbar.StartOpen && StartMenu.Bounds(c).Contains(c.MouseX, c.MouseY));
 
         Wm.Update(c, blockWindows: overChrome);
@@ -216,6 +221,7 @@ public sealed class ShellHost : IDisposable
 
         if (Taskbar.StartOpen) StartMenu.Draw(c);
         Desktop.Update(c);
+        Drag.Resolve(c);
         Menus.Draw(c);
     }
 
@@ -875,6 +881,7 @@ public sealed class ShellHost : IDisposable
                 break;
 
             case "revolutionary": Launch(c, "explorer", Fs.Revolutionary); break;
+            case "drivec": Launch(c, "explorer", Fs.DriveC); break;
             case "tricks": Launch(c, "explorer", Fs.UsefulTricks); break;
             case "pictures": Launch(c, "explorer", Fs.MyPictures); break;
             case "photo": Launch(c, "paint", Fs.Revolutionary.Children

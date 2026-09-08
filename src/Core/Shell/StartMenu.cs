@@ -276,11 +276,35 @@ public sealed class StartMenu
             MenuItem.Of(L.T("whatsnew.title"), () => Go(c, "whatsnew", null), IconId.Star),
         };
 
+        // Anything registered that the groups above do not already name — a
+        // program dropped into apps/ by somebody else, most of all — is listed
+        // here, so a custom program is reachable without anyone editing a menu.
+        var listed = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "notepad", "paint", "calculator", "terminal", "allinone", "voice", "mycomputer",
+            "minesweeper", "taskmgr", "display", "update", "whatsnew", "browser", "orega",
+            "player", "spreadsheet", "explorer", "controlpanel", "sound", "language",
+            "effects", "appearance", "advanced", "taskbarprops",
+        };
+
+        var others = _shell.Programs.All
+            .Where(p => !listed.Contains(p.Id))
+            .OrderBy(p => L.T(p.NameKey), StringComparer.CurrentCulture)
+            .Select(p => MenuItem.Of(L.T(p.NameKey), () => Go(c, p.Id, null), p.Icon))
+            .ToList();
+
         var items = new List<MenuItem>
         {
             MenuItem.Sub(L.T("start.accessories"), accessories, IconId.Folder),
             MenuItem.Sub(L.T("start.games"), games, IconId.Folder),
             MenuItem.Sub(L.T("start.system_tools"), tools, IconId.Folder),
+        };
+
+        if (others.Count > 0)
+            items.Add(MenuItem.Sub(L.T("start.other_programs"), others, IconId.Program));
+
+        items.AddRange(new[]
+        {
             MenuItem.Sep(),
             MenuItem.Of(L.T("start.firefox_web_browser"), () => Go(c, "browser", null), IconId.Firefox),
             MenuItem.Of(L.T("start.orega"), () => Go(c, "orega", null), IconId.Opera),
@@ -288,7 +312,7 @@ public sealed class StartMenu
             MenuItem.Of(L.T("start.miminus_sheet"), () => Go(c, "spreadsheet", null), IconId.Spreadsheet),
             MenuItem.Sep(),
             MenuItem.Of(L.T("start.about_miminus"), () => Go(c, "about", null), IconId.DlgInfo),
-        };
+        });
 
         _shell.Menus.Open(items, anchor.Right - 4, anchor.Bottom - 8, this, c);
     }

@@ -197,6 +197,34 @@ public sealed class HostMount
         return true;
     }
 
+    /// <summary>Moves a mounted file or folder into another mounted folder on
+    /// the same writable mount. Refuses anything else, and says why.</summary>
+    public static bool MoveInto(VNode node, VNode folder, out string error)
+    {
+        error = null;
+
+        if (node.Mount is not { Writable: true } || folder.Mount != node.Mount)
+        {
+            error = L.T("mount.move_refused");
+            return false;
+        }
+
+        string target = Path.Combine(folder.HostPath, Path.GetFileName(node.HostPath));
+        try
+        {
+            if (node.IsContainer) Directory.Move(node.HostPath, target);
+            else File.Move(node.HostPath, target);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+
+        Repoint(node, target);
+        return true;
+    }
+
     /// <summary>Rewrites the host paths of a moved node and its loaded children,
     /// which would otherwise still point at the old name.</summary>
     static void Repoint(VNode node, string hostPath)

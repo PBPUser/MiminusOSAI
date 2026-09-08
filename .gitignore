@@ -9,3 +9,7 @@
 
 # reference footage (large, not part of the source)
 references/*.mp4
+
+# built sample program
+samples/*/bin/
+samples/*/obj/

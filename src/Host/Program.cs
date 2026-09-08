@@ -34,6 +34,9 @@ internal static class Program
 
             shell.LoadPrograms(Path.Combine(AppContext.BaseDirectory, "apps"));
             if (opts.UpdateUrl != null) shell.Updates.Source = opts.UpdateUrl;
+            if (opts.Dpi > 0) shell.Settings.Dpi = opts.Dpi;
+            if (opts.Depth > 0) shell.Settings.ColorDepth = opts.Depth;
+            if (opts.Refresh >= 0) shell.Settings.RefreshHz = opts.Refresh;
             Console.WriteLine($"Programs    : {shell.Programs.Count}");
 
             if (opts.Lang != null) L.Current = opts.Lang.Value;
@@ -77,9 +80,18 @@ internal static class Program
             // is how the screenshot mode captures individual applications.
             bool pendingOpen = opts.Open.Count > 0;
             var pendingClicks = new List<(float x, float y, double at)>(opts.Clicks);
+            var pendingDrags = new List<(float x1, float y1, float x2, float y2, double at)>(opts.Drags);
+
+            // A scripted drag runs over several frames: press, a few steps
+            // along the line, then release — which is the only way a widget
+            // that only reacts while the button is held can be exercised.
+            (float x1, float y1, float x2, float y2)? drag = null;
+            int dragStep = 0;
+            const int DragSteps = 8;
             var pendingKeys = new List<(int vk, char? ch, double at)>(opts.Keys);
             bool clickHeld = false;
             int heldKey = 0;
+            int heldModifier = 0;
 
             var clock = System.Diagnostics.Stopwatch.StartNew();
             double last = 0;
@@ -99,16 +111,58 @@ internal static class Program
                 fpsTimer += dt;
                 if (fpsTimer >= 0.5) { fps = fpsFrames / fpsTimer; fpsFrames = 0; fpsTimer = 0; }
 
+                // Scripted drags run to their end before anything else moves
+                // the pointer.
+                if (drag != null)
+                {
+                    dragStep++;
+                    float f = Math.Min(1f, dragStep / (float)DragSteps);
+                    window.InjectMove(drag.Value.x1 + (drag.Value.x2 - drag.Value.x1) * f,
+                                      drag.Value.y1 + (drag.Value.y2 - drag.Value.y1) * f);
+
+                    if (dragStep > DragSteps)
+                    {
+                        window.InjectRelease();
+                        drag = null;
+                    }
+                }
+                else
+                {
+                    for (int i = pendingDrags.Count - 1; i >= 0; i--)
+                    {
+                        if (now < pendingDrags[i].at) continue;
+                        var d = pendingDrags[i];
+                        window.InjectClick(d.x1, d.y1);
+                        drag = (d.x1, d.y1, d.x2, d.y2);
+                        dragStep = 0;
+                        pendingDrags.RemoveAt(i);
+                        break;
+                    }
+                }
+
                 // Scripted clicks: press on the scheduled frame, release next.
-                if (clickHeld) { window.InjectRelease(); clickHeld = false; }
+                if (drag == null && clickHeld) { window.InjectRelease(); clickHeld = false; }
                 if (heldKey != 0) { window.InjectKeyUp(heldKey); heldKey = 0; }
+                if (heldModifier != 0 && !pendingKeys.Any(k => k.at <= now))
+                {
+                    window.InjectKeyUp(heldModifier);
+                    heldModifier = 0;
+                }
+
+                // Every key scheduled for this moment goes down together, so a
+                // modifier and the key it qualifies arrive in one frame.
                 for (int i = pendingKeys.Count - 1; i >= 0; i--)
                 {
                     if (now < pendingKeys[i].at) continue;
+
                     window.InjectKey(pendingKeys[i].vk, pendingKeys[i].ch);
-                    heldKey = pendingKeys[i].vk;
+                    if (pendingKeys[i].vk is Platform.Keys.Control or Platform.Keys.Shift
+                                           or Platform.Keys.Menu)
+                        heldModifier = pendingKeys[i].vk;
+                    else
+                        heldKey = pendingKeys[i].vk;
+
                     pendingKeys.RemoveAt(i);
-                    break;
                 }
                 for (int i = pendingClicks.Count - 1; i >= 0; i--)
                 {
@@ -121,14 +175,20 @@ internal static class Program
 
                 ctx.Time = now;
                 ctx.Dt = dt;
-                ctx.ScreenW = window.Width;
-                ctx.ScreenH = window.Height;
+                ctx.ScreenW = renderer.ScreenW;
+                ctx.ScreenH = renderer.ScreenH;
                 ctx.MouseHandled = false;
                 ctx.KeyboardHandled = false;
                 ctx.TooltipText = null;
                 ctx.Cursor = CursorShape.Arrow;
 
-                renderer.Begin(window.Width, window.Height);
+                // The DPI setting scales the whole picture; the pointer has to
+                // arrive in the same coordinates the UI is laid out in.
+                float scale = shell.Settings.Scale;
+                window.Input.PointerScale = scale;
+                renderer.ColorLevels = shell.Settings.ColorLevels;
+
+                renderer.Begin(window.Width, window.Height, scale);
                 renderer.Clear(Color.Black);
 
                 shell.Frame(ctx);
@@ -172,9 +232,12 @@ internal static class Program
 
                 // The driver may ignore the swap interval, so cap the rate here
                 // rather than spinning the GPU on a desktop that rarely changes.
-                if (opts.FpsCap > 0)
+                // --fps wins when it is given; otherwise the refresh rate
+                // chosen in Display Properties → Монитор is the cap.
+                int cap = opts.FpsCap > 0 ? opts.FpsCap : shell.Settings.RefreshHz;
+                if (cap > 0)
                 {
-                    double target = 1.0 / opts.FpsCap;
+                    double target = 1.0 / cap;
                     double spent = clock.Elapsed.TotalSeconds - now;
                     int sleep = (int)((target - spent) * 1000);
                     if (sleep > 1) Thread.Sleep(sleep);
@@ -210,7 +273,11 @@ internal static class Program
         public readonly List<(float x, float y, double at)> Clicks = new();
         public readonly List<(int vk, char? ch, double at)> Keys = new();
         public bool MountWritable;
+        public readonly List<(float x1, float y1, float x2, float y2, double at)> Drags = new();
         public string UpdateUrl;
+        public int Dpi;      // 0 = leave it at 96
+        public int Depth;    // 0 = leave it at 32
+        public int Refresh = -1;
 
         public const string HelpText = """
             Миминус ОС — a pseudo-operating system in raw OpenGL, GLSL and OpenAL.
@@ -229,6 +296,12 @@ internal static class Program
                                 (off by default — mounts are read-only)
               --update-url=U    read the version manifest from U (a URL or a
                                 file) instead of the project repository
+              --dpi=N           interface scale: 96 (default), 120, 144
+              --depth=N         colour quality: 16, 24 or 32 bits
+              --refresh=N       frame cap in Hz, 0 for uncapped
+              --drag=X1,Y1,X2,Y2[,T]
+                                press at the first point, travel to the second
+                                and release, at T seconds
               --mute            start with sound off
               --stats           show an FPS / draw-call overlay
               --screenshot=PATH render PATH as PNG and exit
@@ -271,6 +344,24 @@ internal static class Program
                     };
                 else if (a == "--mount-writable") o.MountWritable = true;
                 else if (a.StartsWith("--update-url=")) o.UpdateUrl = a[13..];
+                else if (a.StartsWith("--dpi=") && int.TryParse(a[6..], out int dpi)) o.Dpi = dpi;
+                else if (a.StartsWith("--depth=") && int.TryParse(a[8..], out int depth)) o.Depth = depth;
+                else if (a.StartsWith("--refresh=") && int.TryParse(a[10..], out int hz)) o.Refresh = hz;
+                else if (a.StartsWith("--drag="))
+                {
+                    // --drag=X1,Y1,X2,Y2[,T]: press, travel, release.
+                    string[] d = a[7..].Split(',');
+                    if (d.Length >= 4 &&
+                        float.TryParse(d[0], out float dx1) && float.TryParse(d[1], out float dy1) &&
+                        float.TryParse(d[2], out float dx2) && float.TryParse(d[3], out float dy2))
+                    {
+                        double at = 1.0;
+                        if (d.Length >= 5)
+                            double.TryParse(d[4], System.Globalization.NumberStyles.Any,
+                                            System.Globalization.CultureInfo.InvariantCulture, out at);
+                        o.Drags.Add((dx1, dy1, dx2, dy2, at));
+                    }
+                }
                 else if (a.StartsWith("--mount="))
                 {
                     string spec = a[8..];
@@ -303,6 +394,22 @@ internal static class Program
                 {
                     string[] kp = a[6..].Split(',');
                     string name = kp[0].ToLowerInvariant();
+
+                    // "ctrl+delete" and friends: the modifier is held down for
+                    // the same frame as the key it qualifies.
+                    int modifier = 0;
+                    int plus = name.IndexOf('+');
+                    if (plus > 0)
+                    {
+                        modifier = name[..plus] switch
+                        {
+                            "ctrl" or "control" => Platform.Keys.Control,
+                            "shift" => Platform.Keys.Shift,
+                            "alt" => Platform.Keys.Menu,
+                            _ => 0,
+                        };
+                        if (modifier != 0) name = name[(plus + 1)..];
+                    }
                     double at = 1.0;
                     if (kp.Length >= 2)
                         double.TryParse(kp[1], System.Globalization.NumberStyles.Any,
@@ -314,6 +421,9 @@ internal static class Program
                         "esc" or "escape" => (Platform.Keys.Escape, (char?)null),
                         "del" or "delete" => (Platform.Keys.Delete, (char?)null),
                         "tab" => (Platform.Keys.Tab, (char?)null),
+                        "ctrl" or "control" => (Platform.Keys.Control, (char?)null),
+                        "shift" => (Platform.Keys.Shift, (char?)null),
+                        "alt" => (Platform.Keys.Menu, (char?)null),
                         "left" => (Platform.Keys.Left, (char?)null),
                         "right" => (Platform.Keys.Right, (char?)null),
                         "up" => (Platform.Keys.Up, (char?)null),
@@ -324,6 +434,7 @@ internal static class Program
                         "f5" => (Platform.Keys.F5, (char?)null),
                         _ => (0, name.Length > 0 ? name[0] : (char?)null),
                     };
+                    if (modifier != 0) o.Keys.Add((modifier, null, at));
                     o.Keys.Add((vk, ch, at));
                 }
                 else if (a.StartsWith("--open="))

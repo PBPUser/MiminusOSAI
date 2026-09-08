@@ -265,17 +265,20 @@ public sealed class AdvancedAppearanceWindow : OsWindow
 /// for the adapter and monitor, filled in with МИМИНУС hardware.</summary>
 public sealed class AdvancedSettingsWindow : OsWindow
 {
+    readonly ShellSettings _settings;
+
+    /// <summary>The rates offered, and the cap each one applies.</summary>
+    static readonly int[] Rates = { 30, 60, 75, 144, 240, 0 };
+
+    /// <summary>The scales offered, in dots per inch.</summary>
+    static readonly int[] Dpis = { 96, 120, 144 };
+
     int _tab;
-    int _dpi;
-    int _refresh = 2;
     bool _hwAccelFull = true;
 
-    public override string Title => L.T("advanced.title");
-    public override float MinWidth => 420;
-    public override float MinHeight => 380;
-
-    public AdvancedSettingsWindow()
+    public AdvancedSettingsWindow(ShellSettings settings)
     {
+        _settings = settings;
         Icon = IconId.Display;
         Modal = true;
         Resizable = false;
@@ -284,6 +287,10 @@ public sealed class AdvancedSettingsWindow : OsWindow
         ShowInTaskbar = false;
         Bounds = new Rect(0, 0, 450, 420);
     }
+
+    public override string Title => L.T("advanced.title");
+    public override float MinWidth => 420;
+    public override float MinHeight => 380;
 
     public override void OnOpened(UiContext c) => CenterOn(c.ScreenW, c.ScreenH, c.Theme.TaskbarHeight);
 
@@ -322,8 +329,14 @@ public sealed class AdvancedSettingsWindow : OsWindow
         W.GroupBox(c, new Rect(body.X, body.Y, body.W, 96), L.T("advanced.display_scale"));
         var inner = new Rect(body.X + 14, body.Y + 28, body.W - 28, 60);
         c.F.Ui.Draw(c.R, L.T("advanced.dpi_setting"), inner.X, inner.Y + 4, c.Theme.Text);
-        W.ComboBox(c, Id + ".dpi", new Rect(inner.X, inner.Y + 24, 240, 22),
-                   new List<string> { L.T("advanced.dpi_normal"), L.T("advanced.dpi_large") }, ref _dpi);
+
+        int dpi = Math.Max(0, Array.IndexOf(Dpis, _settings.Dpi));
+        var names = Dpis.Select(d => L.F(d == 96 ? "advanced.dpi_normal" : "advanced.dpi_scaled", d)).ToList();
+
+        // Changing it here changes the size of everything on screen from the
+        // next frame, this window included.
+        if (W.ComboBox(c, Id + ".dpi", new Rect(inner.X, inner.Y + 24, 240, 22), names, ref dpi))
+            _settings.Dpi = Dpis[Math.Clamp(dpi, 0, Dpis.Length - 1)];
 
         var note = new Rect(body.X, body.Y + 110, body.W, body.H - 110);
         foreach (string line in c.F.Ui.Wrap(L.T("advanced.compatibility_note"), note.W))
@@ -376,10 +389,16 @@ public sealed class AdvancedSettingsWindow : OsWindow
         W.GroupBox(c, settings, L.T("advanced.monitor_settings"));
         var inner = new Rect(settings.X + 14, settings.Y + 28, settings.W - 28, 60);
         c.F.Ui.Draw(c.R, L.T("advanced.refresh_rate"), inner.X, inner.Y + 4, c.Theme.Text);
-        W.ComboBox(c, Id + ".refresh", new Rect(inner.X, inner.Y + 24, 200, 22),
-                   new List<string> { "60 " + L.T("advanced.hertz"), "75 " + L.T("advanced.hertz"),
-                                      "144 " + L.T("advanced.hertz"), "240 " + L.T("advanced.hertz") },
-                   ref _refresh);
+
+        int rate = Math.Max(0, Array.IndexOf(Rates, _settings.RefreshHz));
+        var names = Rates.Select(r => r == 0
+            ? L.T("advanced.unlimited")
+            : r + " " + L.T("advanced.hertz")).ToList();
+
+        if (W.ComboBox(c, Id + ".refresh", new Rect(inner.X, inner.Y + 24, 200, 22), names, ref rate))
+            _settings.RefreshHz = Rates[Math.Clamp(rate, 0, Rates.Length - 1)];
+
+        c.F.Small.Draw(c.R, L.T("advanced.refresh_note"), inner.X, inner.Y + 52, c.Theme.TextDisabled);
     }
 
     void DrawTroubleshoot(UiContext c, Rect body)

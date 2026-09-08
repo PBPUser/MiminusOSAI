@@ -47,6 +47,11 @@ from `OpenAL32.dll`; if it is missing the OS runs silently instead of failing.
 --mount=PATH      mount a real folder as a drive (repeatable; --mount=X:PATH
                   picks the letter). Read-only unless --mount-writable
 --update-url=U    read the version manifest from U (a URL or a file)
+--dpi=N           interface scale: 96 (default), 120 or 144
+--depth=N         colour quality: 16, 24 or 32 bits
+--refresh=N       frame cap in Hz, 0 for uncapped
+--drag=X1,Y1,X2,Y2[,T]
+                  scripted drag: press, travel, release
 --mute            start with sound off
 --stats           FPS / draw-call overlay
 --screenshot=PATH render to PNG and exit
@@ -91,7 +96,17 @@ windows of one program into a single button once the bar runs short of room.
 The Windows key belongs to МИМИНУС while the window has the focus — a low-level
 hook takes it from the host shell — and opens the Start menu, with Win+E, Win+R,
 Win+F, Win+D, Win+U, Win+L and Win+Pause behind it. XP two-column Start menu with
-a working *All Programs* tree.
+a working *All Programs* tree, which lists whatever programs are registered so a
+custom one appears without any menu being edited.
+
+Files, folders and shortcuts drag between the desktop and any folder window, and
+between folder windows: the drag belongs to the shell rather than to either end,
+so a folder under the pointer takes the drop, the view takes it otherwise, and an
+icon dropped on the desktop lands where it was let go. A mounted folder moves the
+real directory on disk when the mount is writable.
+
+Clicking the tray speaker drops the XP volume panel — a standing slider, a mute
+box, and the wheel over the speaker for a quick change.
 
 **Window manager** — draggable and resizable windows with eight-way edge grips,
 z-order, focus, minimise/maximise/restore, modal dialogs that block their owner,
@@ -115,6 +130,11 @@ cascade and tile, and per-theme chrome.
 | Центр обновления | reads a version manifest published in the project's GitHub repository, then downloads, verifies, unpacks and installs what it announces. |
 | Что нового | the tour the system shows itself the first time it starts after an update — nine cards, each illustration built from the same icons and rectangles as the rest of the OS. |
 | | plus Task Manager, Control Panel, Sound properties, Properties sheets, Open With, Run, About, Распознавание голоса (which listens, thinks, and admits it is unfinished). |
+
+**Display** — the settings are not decoration. DPI scales the whole picture (96,
+120 or 144), the refresh rate on the Monitor sheet really caps the frame rate,
+and colour quality really reduces the colour: at 16-bit the shader snaps every
+channel to 32 levels and the title-bar gradients band.
 
 **Themes** — XP Luna in blue, olive and silver, a Windows-7 pastiche for
 «Миминус 7», and Windows Classic. Twelve procedurally generated wallpapers.
@@ -187,6 +207,12 @@ of its programs is actually launched, into its own **collectible** load context;
 when its last window closes and a grace period passes, the context is unloaded
 and the runtime reclaims it. `Miminus.Core` is deliberately resolved from the
 default context instead, so the shell and every program share one set of types.
+
+Any assembly counts, not only the ones that shipped: dropping `MyProgram.dll`
+into `apps/` — or into a folder of its own under it, next to whatever it depends
+on — is all it takes to add a program, and it appears in *All Programs* by
+itself. `samples/HelloProgram` is a working example, built against
+`Miminus.Core.dll` and nothing else.
 
 The command prompt's `apps` command lists what is resident, and `apps free`
 drops everything idle and reports whether the runtime finished the job:

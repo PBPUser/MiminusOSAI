@@ -61,6 +61,35 @@ public sealed class ShellSettings
     /// <summary>Keep the tray icons behind a chevron until asked.</summary>
     public bool HideInactiveIcons;
 
+    // ---- display -----------------------------------------------------------
+
+    /// <summary>Dots per inch the interface is drawn at. 96 is the size every
+    /// window in this system was laid out for; anything else scales the whole
+    /// picture, so a dialog stays the same shape and simply gets bigger.</summary>
+    public int Dpi = 96;
+
+    /// <summary>How much larger than the 96-DPI layout everything is drawn.</summary>
+    public float Scale => Dpi / 96f;
+
+    /// <summary>Frames per second the window is held to. The monitor sheet
+    /// calls it a refresh rate; it is a frame cap, and it really caps.</summary>
+    public int RefreshHz = 60;
+
+    /// <summary>Bits per pixel the picture is reduced to before it is shown.
+    /// 32 leaves it alone; 16 bands the gradients the way the hardware of the
+    /// period did.</summary>
+    public int ColorDepth = 32;
+
+    /// <summary>Levels per channel the renderer should quantise to, or 0 for
+    /// no quantisation at all.</summary>
+    public float ColorLevels => ColorDepth switch
+    {
+        8 => 6,        // 6 levels per channel: the 216-colour web palette
+        16 => 32,      // 5 bits per channel, near enough to 5-6-5
+        24 => 0,
+        _ => 0,
+    };
+
     public float DesktopIconSize => LargeIcons ? 48 : 32;
     public float DesktopCellSize => LargeIcons ? 96 : 76;
 }

@@ -169,6 +169,10 @@ public sealed class VirtualFS
 {
     public readonly VNode MyComputer;
     public readonly VNode DriveC;
+
+    /// <summary>C:\WINDOWS, which is also shown on the desktop so it can be
+    /// found without going looking for it.</summary>
+    public VNode WindowsFolder;
     public readonly VNode Desktop;
     public readonly VNode MyDocuments;
     public readonly VNode MyPictures;
@@ -230,7 +234,10 @@ public sealed class VirtualFS
         });
 
         DriveC.Add(Folder("Program Files"));
-        DriveC.Add(Folder("WINDOWS"));
+
+        // The folder part 3 deletes to prove the system is not Windows
+        // underneath. It refuses an ordinary delete and goes with Ctrl held.
+        WindowsFolder = DriveC.Add(Folder("WINDOWS"));
 
         RecycleBin = new VNode
         {
@@ -543,6 +550,69 @@ public sealed class VirtualFS
     /// <summary>Moves a node to the Recycle Bin, or removes it outright when
     /// <paramref name="permanent"/> — which is what Ctrl+Delete does, and the
     /// only way a Windows folder goes anywhere.</summary>
+    /// <summary>True when <paramref name="folder"/> is inside
+    /// <paramref name="node"/>, which is the one move that cannot be made.</summary>
+    static bool Contains(VNode node, VNode folder)
+    {
+        for (var walk = folder; walk != null; walk = walk.Parent)
+            if (walk == node) return true;
+        return false;
+    }
+
+    /// <summary>Moves a node into a folder. Returns false with a reason the
+    /// caller can put in front of the user; a move that would change nothing
+    /// succeeds silently.</summary>
+    public bool Move(VNode node, VNode folder, out string error)
+    {
+        error = null;
+
+        if (node == null || folder == null || !folder.IsContainer)
+        {
+            error = L.T("fs.move_refused");
+            return false;
+        }
+
+        if (node.Parent == folder) return true;
+
+        if (node.Parent == null || node.Protected)
+        {
+            error = L.T("fs.protected_folder");
+            return false;
+        }
+
+        if (Contains(node, folder))
+        {
+            error = L.T("fs.move_into_itself");
+            return false;
+        }
+
+        // Reading the destination first also loads a mounted folder that has
+        // not been opened yet, so the name check sees what is really in it.
+        if (folder.Entries.Any(sibling =>
+                sibling.Name.Equals(node.Name, StringComparison.OrdinalIgnoreCase)))
+        {
+            error = L.F("fs.rename_exists", node.Name);
+            return false;
+        }
+
+        // A node backed by a real file can only move within its own mount, and
+        // only when that mount was opened for writing.
+        if (node.IsHosted || folder.IsHosted)
+        {
+            if (!node.IsHosted || !folder.IsHosted)
+            {
+                error = L.T("mount.move_refused");
+                return false;
+            }
+            if (!HostMount.MoveInto(node, folder, out error)) return false;
+        }
+
+        node.Parent.Children.Remove(node);
+        folder.Add(node);
+        node.Modified = DateTime.Now;
+        return true;
+    }
+
     public void Delete(VNode node, bool permanent = false)
     {
         if (node?.Parent == null || node.Protected) return;

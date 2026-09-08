@@ -9,6 +9,11 @@ public enum MouseButton { Left = 0, Right = 1, Middle = 2 }
 public sealed class InputState
 {
     public float MouseX, MouseY;
+
+    /// <summary>DPI scale the picture is drawn at. Pointer positions arrive
+    /// from Windows in real pixels and are divided by it, so the UI works in
+    /// one coordinate space whatever the scale.</summary>
+    public float PointerScale = 1;
     public float MouseDX, MouseDY;
     public float WheelDelta;
 
@@ -238,7 +243,8 @@ public sealed unsafe class AppWindow : IDisposable
                 float ny = (short)HiWord(lParam);
                 Input.MouseDX += nx - Input.MouseX;
                 Input.MouseDY += ny - Input.MouseY;
-                Input.MouseX = nx; Input.MouseY = ny;
+                Input.MouseX = nx / Input.PointerScale;
+                Input.MouseY = ny / Input.PointerScale;
                 return IntPtr.Zero;
             }
 
@@ -317,9 +323,19 @@ public sealed unsafe class AppWindow : IDisposable
     /// scripted-click switch so interactive behaviour can be screenshotted.</summary>
     public void InjectClick(float x, float y)
     {
-        Input.MouseX = x;
-        Input.MouseY = y;
+        Input.MouseX = x / Input.PointerScale;
+        Input.MouseY = y / Input.PointerScale;
         Input.SetButton(MouseButton.Left, true);
+    }
+
+    /// <summary>Moves the injected pointer without touching the button, which
+    /// is what makes a scripted drag a drag rather than two clicks.</summary>
+    public void InjectMove(float x, float y)
+    {
+        Input.MouseDX += x - Input.MouseX;
+        Input.MouseDY += y - Input.MouseY;
+        Input.MouseX = x / Input.PointerScale;
+        Input.MouseY = y / Input.PointerScale;
     }
 
     public void InjectRelease() => Input.SetButton(MouseButton.Left, false);

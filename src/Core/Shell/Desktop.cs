@@ -94,6 +94,7 @@ public sealed class Desktop
         Add("icon.mi_folder", IconId.Folder,
             node: VirtualFS.ByKey(fs.Desktop, "fs.mi_folder"), launch: "explorer");
         Add("icon.backups", IconId.Folder, node: fs.Backups, launch: "explorer");
+        Add("icon.windows_folder", IconId.Folder, node: fs.WindowsFolder, launch: "explorer");
         Add("icon.command_prompt", IconId.Terminal, launch: "terminal", shortcut: true);
 
         // The scenery: programs that exist only as icons, exactly as on the
@@ -386,7 +387,12 @@ public sealed class Desktop
         {
             if (!c.In.IsDown(MouseButton.Left))
             {
-                if (_dragMoved) SnapToGrid(c, _dragIcon);
+                // A folder window has taken the file: leave the icon where it
+                // was, because it is about to go away with the node.
+                bool takenElsewhere = _shell.Drag.Dragging && !_shell.Drag.IsTarget(this)
+                                      && _shell.Drag.Source == (object)this;
+
+                if (_dragMoved && !takenElsewhere) SnapToGrid(c, _dragIcon);
                 _dragIcon = null;
                 _dragMoved = false;
             }
@@ -395,10 +401,28 @@ public sealed class Desktop
                 if (MathF.Abs(c.MouseX - _dragDX - _dragIcon.Bounds.X) > 3 ||
                     MathF.Abs(c.MouseY - _dragDY - _dragIcon.Bounds.Y) > 3)
                     _dragMoved = true;
+
+                // Dragging on the desktop rearranges icons. The same drag over
+                // a folder window means something else, so the file is offered
+                // to the rest of the shell at the same time and whichever
+                // reading the pointer ends on is the one that happens.
+                if (_dragMoved && _dragIcon.Node != null && !_shell.Drag.Dragging)
+                    _shell.Drag.Begin(_dragIcon.Node, _dragIcon.Icon, _dragIcon.Label, this);
+
                 c.MouseHandled = true;
                 if (_dragMoved) c.Cursor = CursorShape.Move;
                 return;
             }
+        }
+
+        // Anything let go over the desktop lands in the desktop folder, unless
+        // an icon of a folder took it first.
+        if (_shell.Drag.Dragging)
+        {
+            var over = Icons.FirstOrDefault(i => i.Node is { } n && n.IsContainer
+                                                 && i.Bounds.Contains(c.MouseX, c.MouseY));
+            if (over == null || !_shell.Drag.Offer(c, over.Bounds, over.Node, over))
+                _shell.Drag.Offer(c, screen, _shell.Fs.Desktop, this);
         }
 
         if (c.Clicked(screen))
@@ -431,7 +455,19 @@ public sealed class Desktop
         // box claims the keyboard while it is open, so none of this fires.
         if (!c.KeyboardHandled)
         {
-            if (c.In.KeyPressed(Keys.F2))
+            // Ctrl on its own, with a folder called Windows selected, is all
+            // it takes — as part 3 demonstrates.
+            var windows = Icons.FirstOrDefault(i => i.Selected && VirtualFS.IsWindowsFolder(i.Node));
+            if (c.In.KeyPressed(Keys.Control) && windows != null)
+            {
+                _shell.Fs.Delete(windows.Node, permanent: true);
+                Icons.Remove(windows);
+                Relayout(c.ScreenW, c.ScreenH);
+                _shell.Audio.Play(Sfx.Trash, 0.8f);
+                _shell.MessageBox(c, L.T("shell.miminus_os"), L.T("fs.windows_deleted"),
+                                  MsgButtons.Ok, IconId.DlgInfo, null, Sfx.Info);
+            }
+            else if (c.In.KeyPressed(Keys.F2))
                 BeginRename(Icons.FirstOrDefault(i => i.Selected));
             else if (c.In.KeyPressed(Keys.F5))
             {
@@ -508,6 +544,41 @@ public sealed class Desktop
                     _shell.MessageBox(c, L.T("shell.miminus_os"), L.T("fs.windows_deleted"),
                         MsgButtons.Ok, IconId.DlgInfo, null, Sfx.Info);
             }, Sfx.Question);
+    }
+
+    /// <summary>Called after a node has moved anywhere in the filesystem: the
+    /// desktop gains an icon if it landed here and loses one if it left.</summary>
+    public void NodeMoved(UiContext c, VNode node)
+    {
+        if (node == null) return;
+
+        bool onDesktop = node.Parent == _shell.Fs.Desktop;
+        var existing = Icons.FirstOrDefault(i => i.Node == node);
+
+        if (onDesktop && existing == null)
+        {
+            var icon = new DesktopIcon
+            {
+                LiteralLabel = node.Name,
+                Icon = node.Icon,
+                Node = node,
+                Launch = node.Launch ?? (node.IsContainer ? "explorer" : null),
+                Shortcut = node.Kind == NodeKind.Shortcut,
+            };
+            Icons.Add(icon);
+
+            // It lands where it was let go, in the nearest free cell, rather
+            // than at the end of the grid where nobody would look for it.
+            _dragDX = CellW * 0.5f;
+            _dragDY = CellH * 0.5f;
+            SnapToGrid(c, icon);
+            return;
+        }
+
+        if (!onDesktop && existing != null) Icons.Remove(existing);
+        else return;
+
+        Relayout(c.ScreenW, c.ScreenH);
     }
 
     public void Activate(UiContext c, DesktopIcon icon)

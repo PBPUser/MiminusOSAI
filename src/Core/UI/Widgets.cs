@@ -683,16 +683,32 @@ public static class W
             ? new Rect(r.CenterX - 6, r.Y + 2 + (r.H - 20) * (1 - frac), 12, 16)
             : new Rect(r.X + 2 + (r.W - 16) * frac, r.CenterY - 8, 12, 16);
 
-        if (c.Clicked(r)) { st.Dragging = true; c.ActiveDrag = id; }
+        // Where the pointer currently sits on the track, as a value.
+        float AtPointer()
+        {
+            float f = vertical
+                ? 1 - (c.MouseY - r.Y - 8) / MathF.Max(1, r.H - 16)
+                : (c.MouseX - r.X - 6) / MathF.Max(1, r.W - 16);
+            return min + Math.Clamp(f, 0, 1) * (max - min);
+        }
+
+        // Pressing anywhere on the track takes the thumb there straight away,
+        // rather than only moving once the pointer does.
+        if (c.Clicked(r))
+        {
+            st.Dragging = true;
+            c.ActiveDrag = id;
+
+            float pressed = AtPointer();
+            if (MathF.Abs(pressed - value) > 1e-4f) { value = pressed; changed = true; }
+        }
+
         if (st.Dragging)
         {
             if (!c.In.IsDown(MouseButton.Left)) { st.Dragging = false; if (c.ActiveDrag == id) c.ActiveDrag = null; }
             else
             {
-                float f = vertical
-                    ? 1 - (c.MouseY - r.Y - 8) / MathF.Max(1, r.H - 16)
-                    : (c.MouseX - r.X - 6) / MathF.Max(1, r.W - 16);
-                float nv = min + Math.Clamp(f, 0, 1) * (max - min);
+                float nv = AtPointer();
                 if (MathF.Abs(nv - value) > 1e-4f) { value = nv; changed = true; }
                 c.MouseHandled = true;
             }

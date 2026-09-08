@@ -38,7 +38,7 @@ public sealed class AdvancedDisplayProgram : IProgram
     public string Id => "advanced";
     public string NameKey => "advanced.title";
     public IconId Icon => IconId.Display;
-    public OsWindow Create(ShellHost shell, VNode document) => new AdvancedSettingsWindow();
+    public OsWindow Create(ShellHost shell, VNode document) => new AdvancedSettingsWindow(shell.Settings);
 }
 
 /// <summary>«Свойства панели задач и меню "Пуск"».</summary>

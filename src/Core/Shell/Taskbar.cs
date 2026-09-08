@@ -43,6 +43,29 @@ public sealed class Taskbar
     /// <summary>Whether the chevron has been used to show the hidden icons.</summary>
     bool _trayExpanded;
 
+    /// <summary>The volume panel that drops out of the speaker, and the icon it
+    /// hangs from — tracked every frame so it follows a resize.</summary>
+    bool _volumeOpen;
+    Rect _speaker;
+    float _lastBlip = -1;
+
+    /// <summary>Size of the panel. Small, and taller than it is wide, because
+    /// the slider in it stands up.</summary>
+    const float VolumeW = 74, VolumeH = 158;
+
+    /// <summary>Where the panel sits, or an empty rect when it is closed. The
+    /// shell asks for this before windows run their input, so a click on the
+    /// panel is not stolen by whatever is underneath it.</summary>
+    public Rect VolumeBounds(UiContext c)
+    {
+        if (!_volumeOpen) return default;
+
+        float x = Math.Clamp(_speaker.CenterX - VolumeW * 0.5f, 2, c.ScreenW - VolumeW - 2);
+        return new Rect(x, Bounds(c).Y - VolumeH - 2, VolumeW, VolumeH);
+    }
+
+    public void CloseVolume() => _volumeOpen = false;
+
     /// <summary>True while an auto-hidden bar is out of the way.</summary>
     public bool Retracted => _hidden > 0.5f;
 
@@ -141,6 +164,7 @@ public sealed class Taskbar
         // Right-click on empty taskbar space.
         if (c.RightClicked(bar)) ShowTaskbarMenu(c);
 
+        DrawVolumePanel(c);
         DrawBalloons(c, bar);
     }
 
@@ -428,7 +452,7 @@ public sealed class Taskbar
         {
             (IconId.TrayNetwork, "tray.local_area_connection",
                 () => _shell.ShowNetworkBalloon(c)),
-            (IconId.Volume, "tray.volume", () => _shell.ToggleMute(c)),
+            (IconId.Volume, "tray.volume", null),   // handled below: it opens the panel
             (IconId.Shield, "tray.security_center",
                 () => _shell.Launch(c, "notepad", _shell.Fs.AntivirusFile)),
         };
@@ -436,10 +460,34 @@ public sealed class Taskbar
         {
             var ir = new Rect(x, tray.CenterY - 8, 16, 16);
             Icons.Draw(c.R, id, ir);
-            if (id == IconId.Volume && _shell.Audio.Muted)
-                c.R.Line(ir.X + 2, ir.Y + 2, ir.Right - 2, ir.Bottom - 2, Color.Rgb(0xE04040), 2f);
-            c.Tooltip(ir, L.T(tip));
-            if (c.Clicked(ir)) click();
+
+            if (id == IconId.Volume)
+            {
+                _speaker = ir;
+                if (_shell.Audio.Muted)
+                    c.R.Line(ir.X + 2, ir.Y + 2, ir.Right - 2, ir.Bottom - 2, Color.Rgb(0xE04040), 2f);
+
+                c.Tooltip(ir, _shell.Audio.Muted
+                    ? L.T("tray.volume_muted")
+                    : L.F("tray.volume_level", (int)MathF.Round(_shell.Audio.MasterVolume * 100)));
+
+                // The wheel over the speaker moves the level without opening
+                // anything, which is how the real tray behaves.
+                if (c.Hovering(ir) && MathF.Abs(c.In.WheelDelta) > 0.01f)
+                {
+                    SetVolume(c, _shell.Audio.MasterVolume + c.In.WheelDelta * 0.05f);
+                    c.In.WheelDelta = 0;
+                }
+
+                if (c.Clicked(ir)) { _volumeOpen = !_volumeOpen; c.Sound(Sfx.Click, 0.5f); }
+                else if (c.RightClicked(ir)) ShowVolumeMenu(c);
+            }
+            else
+            {
+                c.Tooltip(ir, L.T(tip));
+                if (c.Clicked(ir)) click();
+            }
+
             x += 18;
         }
 
@@ -452,6 +500,90 @@ public sealed class Taskbar
         }
 
         return total;
+    }
+
+    /// <summary>Applies a new level and lets it be heard: a short tick at the
+    /// level being set is the only way to judge it.</summary>
+    void SetVolume(UiContext c, float level)
+    {
+        level = Math.Clamp(level, 0, 1);
+        if (MathF.Abs(level - _shell.Audio.MasterVolume) < 1e-4f) return;
+
+        _shell.Audio.MasterVolume = level;
+        if (_shell.Audio.Muted) return;
+
+        // Only every few steps, or dragging the slider would be a rattle.
+        if (_lastBlip < 0 || MathF.Abs(level - _lastBlip) >= 0.06f)
+        {
+            _lastBlip = level;
+            c.Sound(Sfx.Tick, 0.7f);
+        }
+    }
+
+    void ShowVolumeMenu(UiContext c)
+    {
+        var bar = Bounds(c);
+        _shell.Menus.Open(new List<MenuItem>
+        {
+            MenuItem.Of(L.T("tray.open_volume_control"), () => _volumeOpen = true, IconId.Volume),
+            MenuItem.Sep(),
+            new MenuItem
+            {
+                Text = L.T("tray.mute"),
+                Checked = _shell.Audio.Muted,
+                Click = () => _shell.ToggleMute(c),
+            },
+            MenuItem.Sep(),
+            MenuItem.Of(L.T("tray.adjust_audio_properties"), () => _shell.Launch(c, "sound", null),
+                        IconId.Settings),
+        }, _speaker.CenterX, bar.Y, this, c);
+    }
+
+    /// <summary>The little panel the speaker drops: a standing slider and a
+    /// mute box, the whole of the tray volume control.</summary>
+    void DrawVolumePanel(UiContext c)
+    {
+        if (!_volumeOpen) return;
+
+        var t = c.Theme;
+        var panel = VolumeBounds(c);
+
+        c.R.FillRect(panel.Offset(3, 3), Color.Rgba(0x000000, 55));
+        c.R.FillRect(panel, t.Face);
+        c.R.DrawRect(panel, t.MenuBorder);
+
+        var area = panel.Deflate(8);
+
+        var head = area.CutTop(c.F.Small.Height + 4);
+        c.F.Small.DrawCentered(c.R, L.T("tray.volume_label"), head, t.Text);
+
+        var check = area.CutBottom(18);
+        var reading = area.CutBottom(c.F.Small.Height + 4);
+
+        // The slider itself, standing up in what is left.
+        float level = _shell.Audio.MasterVolume;
+        var groove = new Rect(area.CenterX - 12, area.Y + 2, 24, area.H - 4);
+        if (W.Slider(c, "tray.volume.slider", groove, ref level, 0, 1, vertical: true))
+            SetVolume(c, level);
+
+        c.F.Small.DrawCentered(c.R, _shell.Audio.Muted
+                ? L.T("tray.volume_off")
+                : L.F("tray.volume_percent", (int)MathF.Round(level * 100)),
+            reading, t.TextDisabled);
+
+        bool muted = _shell.Audio.Muted;
+        if (W.CheckBox(c, "tray.volume.mute", check, L.T("tray.mute_short"), ref muted))
+            _shell.ToggleMute(c);
+
+        // Anything outside the panel and off the speaker puts it away.
+        bool outside = !panel.Contains(c.MouseX, c.MouseY) && !_speaker.Contains(c.MouseX, c.MouseY);
+        if ((c.In.Pressed(MouseButton.Left) || c.In.Pressed(MouseButton.Right)) && outside)
+            _volumeOpen = false;
+        else if (!c.KeyboardHandled && c.In.KeyPressed(Keys.Escape))
+        {
+            _volumeOpen = false;
+            c.KeyboardHandled = true;
+        }
     }
 
     void DrawBalloons(UiContext c, Rect bar)

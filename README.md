@@ -247,6 +247,13 @@ text files are read on demand, and PNG and BMP images are decoded by the
 project's own decoders. Mounts are **read-only** unless `--mount-writable` is
 given, and host files are never deleted.
 
+### Releases
+
+Built packages live on the
+[releases page](https://github.com/PBPUser/MiminusOSAI/releases), one per tag,
+not in the tree. `latest.txt` names the current one and its SHA-256, which is
+what the update centre downloads and checks.
+
 ### Updates, end to end
 
 `Центр обновления` reads `latest.txt` from

@@ -21,12 +21,12 @@ size.en   = 441 KB
 # Страница проекта, показываемая в центре обновления.
 url       = https://github.com/PBPUser/MiminusOSAI
 
-# Исходные тексты этой версии.
-download  = https://github.com/PBPUser/MiminusOSAI/archive/refs/heads/main.zip
+# Страница релиза с описанием и вложениями.
+download  = https://github.com/PBPUser/MiminusOSAI/releases/tag/v7.3
 
-# Собранный пакет, который центр обновления скачивает и устанавливает сам.
+# Собранный пакет из релиза: его центр обновления скачивает и ставит сам.
 # Контрольная сумма обязательна: без неё пакет будет отклонён.
-package   = https://raw.githubusercontent.com/PBPUser/MiminusOSAI/main/dist/MiminusOS-7.3.zip
+package   = https://github.com/PBPUser/MiminusOSAI/releases/download/v7.3/MiminusOS-7.3.zip
 sha256    = 2BD4C7ED63C675F35C7D75CDB5034ED845AED484C6EBD006A3F24C5119101524
 
 notes     = Добавлено: при первом запуске система задаёт вопросы — язык, имя и оформление.

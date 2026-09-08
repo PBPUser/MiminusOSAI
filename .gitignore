@@ -13,3 +13,6 @@ references/*.mp4
 # built sample program
 samples/*/bin/
 samples/*/obj/
+
+# release packages live on the releases page, not in the tree
+dist/

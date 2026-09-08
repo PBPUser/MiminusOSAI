@@ -12,7 +12,17 @@ namespace Miminus.Apps;
 ///
 /// Audio tracks are synthesised chiptunes played through OpenAL; the video track
 /// is a procedurally drawn news broadcast, so the whole thing ships without a
-/// single media file.</summary>
+/// single media file.
+///
+/// Version 8 re-skinned it. Under «Миминус 8» the case is flat black, the
+/// transport is a row of outlined circles with one accent-filled button in the
+/// middle, and the seek bar is a hairline — the look players took on when they
+/// stopped pretending to be hi-fi separates. Under the older themes it keeps
+/// the brushed AIMP panel it had.
+///
+/// The flat skin is drawn in the theme's own accent rather than version 8's, so
+/// under Luna it is a Luna player: the colour follows the window, and only the
+/// full-screen programs are painted in the one fixed blue.</summary>
 public sealed class MediaPlayerWindow : OsWindow
 {
     sealed record Track(string Key, double Seconds, bool IsVideo, int Seed);
@@ -138,7 +148,8 @@ public sealed class MediaPlayerWindow : OsWindow
     public override void DrawClient(UiContext c, Rect client)
     {
         _ctx = c;
-        c.R.FillRectV(client, Color.Rgb(0x2A3038), Color.Rgb(0x171B21));
+        if (c.Theme.Modern) c.R.FillRect(client, Color.Rgb(0x1B1B1B));
+        else c.R.FillRectV(client, Color.Rgb(0x2A3038), Color.Rgb(0x171B21));
 
         var area = client;
         var side = area.CutRight(232);
@@ -161,7 +172,7 @@ public sealed class MediaPlayerWindow : OsWindow
     void DrawStage(UiContext c, Rect r)
     {
         c.R.FillRect(r, Color.Black);
-        c.R.DrawRect(r, Color.Rgb(0x3A424C));
+        c.R.DrawRect(r, c.Theme.Modern ? Color.Rgb(0x2E2E2E) : Color.Rgb(0x3A424C));
         c.R.PushClip(r);
 
         if (Current.T.IsVideo) DrawVideo(c, r.Deflate(1));
@@ -262,10 +273,20 @@ public sealed class MediaPlayerWindow : OsWindow
     void DrawVisualiser(UiContext c, Rect r)
     {
         // Album-art placeholder.
+        bool modern = c.Theme.Modern;
+
         float artSize = MathF.Min(r.H * 0.62f, r.W * 0.3f);
         var art = new Rect(r.X + 24, r.CenterY - artSize * 0.5f, artSize, artSize);
-        c.R.FillRectV(art, Color.Rgb(0x3A4654), Color.Rgb(0x1E2630));
-        c.R.DrawRect(art, Color.Rgb(0x55606E));
+        if (modern)
+        {
+            c.R.FillRect(art, c.Theme.Accent.Shade(0.55f));
+            c.R.DrawRect(art, c.Theme.Accent);
+        }
+        else
+        {
+            c.R.FillRectV(art, Color.Rgb(0x3A4654), Color.Rgb(0x1E2630));
+            c.R.DrawRect(art, Color.Rgb(0x55606E));
+        }
         Icons.Draw(c.R, IconId.AudioFile, art.Deflate(artSize * 0.26f));
 
         string name = Current.Name;
@@ -281,8 +302,17 @@ public sealed class MediaPlayerWindow : OsWindow
         {
             float h = MathF.Max(2, _spectrum[i] * bars.H);
             var bar = new Rect(bars.X + i * bw + 1, bars.Bottom - h, bw - 2, h);
-            c.R.FillRectV(bar, Color.Rgb(0x7FE0FF), Color.Rgb(0x1E70C0));
-            c.R.FillRect(new Rect(bar.X, bar.Y, bar.W, 2), Color.White);
+            if (modern)
+            {
+                // One flat colour, and a cap that is simply a lighter shade.
+                c.R.FillRect(bar, c.Theme.Accent);
+                c.R.FillRect(new Rect(bar.X, bar.Y, bar.W, 2), Color.Rgb(0x9FD4FF));
+            }
+            else
+            {
+                c.R.FillRectV(bar, Color.Rgb(0x7FE0FF), Color.Rgb(0x1E70C0));
+                c.R.FillRect(new Rect(bar.X, bar.Y, bar.W, 2), Color.White);
+            }
         }
         c.R.FillRect(new Rect(bars.X, bars.Bottom, bars.W, 1), Color.Rgba(0xFFFFFF, 60));
     }
@@ -293,15 +323,30 @@ public sealed class MediaPlayerWindow : OsWindow
     {
         var t = Current.T;
 
+        bool modern = c.Theme.Modern;
+
         // Seek bar.
         var seek = new Rect(r.X, r.Y, r.W, 14);
-        c.R.RoundedRect(seek, 4, Color.Rgb(0x11161C), Color.Rgb(0x3A424C), 1);
         float frac = t.Seconds <= 0 ? 0 : (float)(_position / t.Seconds);
-        c.R.RoundedRectV(new Rect(seek.X + 2, seek.Y + 2, MathF.Max(0, (seek.W - 4) * frac), seek.H - 4), 3,
-                         Color.Rgb(0x7FD0F5), Color.Rgb(0x2E8AD0));
 
-        var knob = new Rect(seek.X + (seek.W - 10) * frac, seek.Y - 2, 10, seek.H + 4);
-        c.R.RoundedRect(knob, 3, Color.Rgb(0xE8EEF4), Color.Rgb(0x9AA6B4), 1);
+        if (modern)
+        {
+            // A hairline with a square handle: nothing else.
+            var line = new Rect(seek.X, seek.CenterY - 2, seek.W, 4);
+            c.R.FillRect(line, Color.Rgb(0x3A3A3A));
+            c.R.FillRect(new Rect(line.X, line.Y, MathF.Max(0, line.W * frac), line.H),
+                         c.Theme.Accent);
+            c.R.FillRect(new Rect(seek.X + (seek.W - 6) * frac, seek.Y, 6, seek.H), Color.White);
+        }
+        else
+        {
+            c.R.RoundedRect(seek, 4, Color.Rgb(0x11161C), Color.Rgb(0x3A424C), 1);
+            c.R.RoundedRectV(new Rect(seek.X + 2, seek.Y + 2, MathF.Max(0, (seek.W - 4) * frac), seek.H - 4), 3,
+                             Color.Rgb(0x7FD0F5), Color.Rgb(0x2E8AD0));
+
+            var knob = new Rect(seek.X + (seek.W - 10) * frac, seek.Y - 2, 10, seek.H + 4);
+            c.R.RoundedRect(knob, 3, Color.Rgb(0xE8EEF4), Color.Rgb(0x9AA6B4), 1);
+        }
 
         if (c.Clicked(seek) || (_seeking && c.In.IsDown(MouseButton.Left)))
         {
@@ -351,13 +396,31 @@ public sealed class MediaPlayerWindow : OsWindow
         bool hover = c.Hovering(r);
         bool held = hover && c.In.IsDown(MouseButton.Left);
 
-        Color top = primary ? Color.Rgb(0x4FA8E8) : Color.Rgb(0x475262);
-        Color bot = primary ? Color.Rgb(0x1E6AB0) : Color.Rgb(0x2A323C);
-        if (held) (top, bot) = (bot, top);
-        else if (hover) { top = top.Shade(1.25f); bot = bot.Shade(1.2f); }
+        if (c.Theme.Modern)
+        {
+            // An outlined circle, filled only when it is the play button or
+            // when the pointer is on it.
+            Color fill = primary ? c.Theme.Accent
+                       : held ? Color.Rgb(0x3A3A3A)
+                       : hover ? Color.Rgb(0x2E2E2E) : Color.Transparent;
+            if (primary && held) fill = c.Theme.Accent.Shade(0.8f);
+            else if (primary && hover) fill = c.Theme.Accent.Shade(1.15f);
 
-        c.R.FillCircle(r.CenterX, r.CenterY, r.W * 0.5f, bot);
-        c.R.FillCircle(r.CenterX, r.CenterY - 1, r.W * 0.46f, top);
+            if (fill.A > 0) c.R.FillCircle(r.CenterX, r.CenterY, r.W * 0.5f, fill);
+            c.R.DrawCircle(r.CenterX, r.CenterY, r.W * 0.5f,
+                           primary ? Color.Transparent : Color.Rgba(0xFFFFFF, hover ? (byte)200 : (byte)120),
+                           1.4f);
+        }
+        else
+        {
+            Color top = primary ? Color.Rgb(0x4FA8E8) : Color.Rgb(0x475262);
+            Color bot = primary ? Color.Rgb(0x1E6AB0) : Color.Rgb(0x2A323C);
+            if (held) (top, bot) = (bot, top);
+            else if (hover) { top = top.Shade(1.25f); bot = bot.Shade(1.2f); }
+
+            c.R.FillCircle(r.CenterX, r.CenterY, r.W * 0.5f, bot);
+            c.R.FillCircle(r.CenterX, r.CenterY - 1, r.W * 0.46f, top);
+        }
 
         Color ink = Color.White;
         float s = r.W * 0.22f;
@@ -395,8 +458,8 @@ public sealed class MediaPlayerWindow : OsWindow
 
     void DrawSidePanel(UiContext c, Rect r)
     {
-        c.R.FillRect(r, Color.Rgb(0x1B2028));
-        c.R.DrawRect(r, Color.Rgb(0x3A424C));
+        c.R.FillRect(r, c.Theme.Modern ? Color.Rgb(0x161616) : Color.Rgb(0x1B2028));
+        c.R.DrawRect(r, c.Theme.Modern ? Color.Rgb(0x2E2E2E) : Color.Rgb(0x3A424C));
 
         var tabsRow = r.CutTop(24);
         string[] names = { L.T("player.playlist"), L.T("player.equalizer"), L.T("player.info") };

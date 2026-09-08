@@ -114,6 +114,21 @@ public static class W
             return;
         }
 
+        if (t.Id == ThemeId.Metro)
+        {
+            // No gradient, no radius, no highlight line: one rectangle that
+            // turns the accent colour when the pointer is over it.
+            Color face = !enabled ? Color.Rgb(0xEAEAEA)
+                       : held ? t.Accent.Shade(0.82f)
+                       : hover ? Color.Rgba(0x2D89EF, 40)
+                       : t.FaceDark;
+            g.FillRect(r, face);
+            g.DrawRect(r, !enabled ? Color.Rgb(0xD4D4D4)
+                        : hover || held || defaultButton ? t.Accent : t.ControlBorder,
+                       defaultButton && !held ? 2 : 1);
+            return;
+        }
+
         Color top = held ? t.FaceDark : t.FaceLight;
         Color bottom = held ? t.FaceLight : t.FaceDark;
         Color border = !enabled ? Color.Rgb(0xC0C0C0)
@@ -121,7 +136,7 @@ public static class W
                      : defaultButton ? t.Accent
                      : t.ControlBorder;
 
-        if (t.Id == ThemeId.Seven)
+        if (t.Flat)
         {
             top = held ? Color.Rgb(0xC2E0F5) : hover ? Color.Rgb(0xEAF6FD) : t.FaceLight;
             bottom = held ? Color.Rgb(0xA8D4F0) : hover ? Color.Rgb(0xC4E5F6) : t.FaceDark;
@@ -133,7 +148,7 @@ public static class W
         }
 
         g.RoundedRectV(r, 3, top, bottom, border, 1);
-        if (!held && enabled && t.Id != ThemeId.Seven)
+        if (!held && enabled && !t.Flat)
             g.FillRect(new Rect(r.X + 2, r.Y + 1, r.W - 4, 1), Color.Rgba(0xFFFFFF, 200));
     }
 
@@ -216,7 +231,7 @@ public static class W
     {
         float top = r.Y + c.F.Ui.Height * 0.5f;
         var frame = new Rect(r.X, top, r.W, r.Bottom - top);
-        c.R.DrawRect(frame, c.Theme.Id == ThemeId.Seven ? Color.Rgb(0xD5DFE7) : Color.Rgb(0xB4B0A4));
+        c.R.DrawRect(frame, c.Theme.Flat ? Color.Rgb(0xD5DFE7) : Color.Rgb(0xB4B0A4));
 
         if (!string.IsNullOrEmpty(title))
         {
@@ -240,7 +255,7 @@ public static class W
         {
             float w = i == panels.Length - 1 ? r.Right - 2 - x : unit;
             var cell = new Rect(x, r.Y + 2, w - 2, r.H - 4);
-            if (t.Id == ThemeId.Classic || t.Id != ThemeId.Seven) Bevel(c, cell, false);
+            if (!t.Flat) Bevel(c, cell, false);
             c.R.PushClip(cell.Deflate(3, 0, 3, 0));
             c.F.Ui.Draw(c.R, panels[i], cell.X + 3, cell.Y + (cell.H - c.F.Ui.Height) * 0.5f, t.Text);
             c.R.PopClip();
@@ -307,7 +322,7 @@ public static class W
         }
 
         bool hot = st.Dragging || c.Hovering(thumb);
-        if (t.Id == ThemeId.Seven)
+        if (t.Flat)
             c.R.FillRect(thumb.Deflate(2), hot ? t.ScrollThumbHot : t.ScrollThumb);
         else
         {
@@ -357,7 +372,7 @@ public static class W
         }
 
         bool hot = st.Dragging || c.Hovering(thumb);
-        if (t.Id == ThemeId.Seven)
+        if (t.Flat)
             c.R.FillRect(thumb.Deflate(2), hot ? t.ScrollThumbHot : t.ScrollThumb);
         else
         {
@@ -374,7 +389,7 @@ public static class W
         bool hover = c.Hovering(r);
         bool held = hover && c.In.IsDown(MouseButton.Left);
 
-        if (t.Id != ThemeId.Seven)
+        if (!t.Flat)
         {
             c.R.FillRectV(r, held ? t.FaceDark : t.FaceLight, held ? t.FaceLight : t.FaceDark);
             c.R.DrawRect(r, t.ControlBorder);
@@ -497,7 +512,7 @@ public static class W
             c.R.PopClip();
         }
 
-        if (t.Id != ThemeId.Seven)
+        if (!t.Flat)
         {
             c.R.FillRectV(btn, t.FaceLight, t.FaceDark);
             c.R.DrawRect(btn, t.ControlBorder);
@@ -573,23 +588,59 @@ public static class W
     /// <summary>What an in-place rename box wants the caller to do next.</summary>
     public enum RenameResult { Editing, Commit, Cancel }
 
-    sealed class RenameState { public bool SelectAll = true; public bool Claimed; }
+    sealed class RenameState
+    {
+        public bool Claimed;
+
+        /// <summary>Where the caret is, and where the selection it is dragging
+        /// behind it started. Equal means no selection, which is most of the
+        /// time.</summary>
+        public int Caret;
+        public int Anchor;
+
+        public bool HasSelection => Caret != Anchor;
+        public int Start => Math.Min(Caret, Anchor);
+        public int End => Math.Max(Caret, Anchor);
+    }
 
     /// <summary>The box that appears over a name when a folder or file is
     /// renamed in place.
     ///
-    /// It behaves the way the shell's own does: it opens with the whole name
-    /// selected so the first character typed replaces it, Enter accepts,
-    /// Escape abandons, and clicking anywhere else accepts as well. Keyboard
-    /// input is claimed while it is open so Delete and Enter do not also reach
-    /// the view underneath.</summary>
-    public static RenameResult RenameBox(UiContext c, string id, Rect r, ref string value)
+    /// It behaves the way the shell's own does. It opens with the name selected
+    /// so the first character typed replaces it — and for a file it selects the
+    /// part before the dot, because renaming <c>читать.txt</c> almost never
+    /// means renaming the <c>.txt</c>. After that it is a text box and not a
+    /// pretence of one: the caret moves with Left and Right, Home and End go to
+    /// the ends, Shift drags a selection along, Delete takes the character in
+    /// front and Backspace the one behind, and clicking inside puts the caret
+    /// where the pointer is rather than at the end of the line.
+    ///
+    /// Enter accepts, Escape abandons, and clicking anywhere else accepts,
+    /// which is what the shell does. Keyboard input is claimed while it is
+    /// open, so Delete and Enter never also reach the view underneath.</summary>
+    /// <param name="selectTo">How much of the name to select when the box
+    /// opens; -1 selects all of it.</param>
+    public static RenameResult RenameBox(UiContext c, string id, Rect r, ref string value,
+                                         int selectTo = -1)
     {
         var t = c.Theme;
         var st = c.State<RenameState>(id);
 
         // The box takes focus the frame it appears, and keeps it.
-        if (!st.Claimed) { st.Claimed = true; c.Focus = id; }
+        if (!st.Claimed)
+        {
+            st.Claimed = true;
+            c.Focus = id;
+            st.Anchor = 0;
+            st.Caret = selectTo >= 0 ? Math.Clamp(selectTo, 0, value.Length) : value.Length;
+        }
+
+        // A local copy, because the editing helpers below are local
+        // functions and a ref parameter cannot be captured by one.
+        string text = value;
+
+        st.Caret = Math.Clamp(st.Caret, 0, text.Length);
+        st.Anchor = Math.Clamp(st.Anchor, 0, text.Length);
 
         c.R.FillRect(r, t.FieldBack);
         c.R.DrawRect(r, t.ControlBorderHot);
@@ -598,26 +649,65 @@ public static class W
         float textY = r.Y + (r.H - c.F.Ui.Height) * 0.5f;
         var result = RenameResult.Editing;
 
+        // The text scrolls only as far as it must to keep the caret in view.
+        float caretW = c.F.Ui.Measure(text[..st.Caret]);
+        float inner = r.W - 8;
+        float offset = MathF.Max(0, caretW - inner);
+        float x = r.X + 3 - offset;
+
         if (!c.KeyboardHandled)
         {
+            bool shift = c.In.Shift;
+
+            void Replace(string with)
+            {
+                int a = st.Start, b = st.End;
+                text = text[..a] + with + text[b..];
+                st.Caret = st.Anchor = a + with.Length;
+            }
+
+            void Move(int to, bool extend)
+            {
+                st.Caret = Math.Clamp(to, 0, text.Length);
+                if (!extend) st.Anchor = st.Caret;
+            }
+
             foreach (char ch in c.In.TypedChars)
             {
                 if (ch < ' ') continue;
-                if (st.SelectAll) { value = ""; st.SelectAll = false; }
-                value += ch;
+                Replace(ch.ToString());
             }
 
             if (c.In.KeyPressed(Keys.Back))
             {
-                if (st.SelectAll) { value = ""; st.SelectAll = false; }
-                else if (value.Length > 0) value = value[..^1];
+                if (st.HasSelection) Replace("");
+                else if (st.Caret > 0)
+                {
+                    text = text[..(st.Caret - 1)] + text[st.Caret..];
+                    st.Caret = st.Anchor = st.Caret - 1;
+                }
+            }
+            else if (c.In.KeyPressed(Keys.Delete))
+            {
+                if (st.HasSelection) Replace("");
+                else if (st.Caret < text.Length)
+                    text = text[..st.Caret] + text[(st.Caret + 1)..];
             }
 
+            if (c.In.KeyPressed(Keys.Left))
+                Move(st.HasSelection && !shift ? st.Start : st.Caret - 1, shift);
+            else if (c.In.KeyPressed(Keys.Right))
+                Move(st.HasSelection && !shift ? st.End : st.Caret + 1, shift);
+            else if (c.In.KeyPressed(Keys.Home)) Move(0, shift);
+            else if (c.In.KeyPressed(Keys.End)) Move(text.Length, shift);
+
+            if (c.In.Ctrl && c.In.KeyPressed(Keys.A)) { st.Anchor = 0; st.Caret = text.Length; }
+
             if (c.In.Ctrl && c.In.KeyPressed(Keys.V))
-            {
-                if (st.SelectAll) { value = ""; st.SelectAll = false; }
-                value += Clipboard.GetText().Replace("\r", "").Replace("\n", "");
-            }
+                Replace(Clipboard.GetText().Replace("\r", "").Replace("\n", ""));
+
+            if (c.In.Ctrl && c.In.KeyPressed(Keys.C) && st.HasSelection)
+                Clipboard.SetText(text[st.Start..st.End]);
 
             if (c.In.KeyPressed(Keys.Enter)) result = RenameResult.Commit;
             else if (c.In.KeyPressed(Keys.Escape)) result = RenameResult.Cancel;
@@ -625,32 +715,64 @@ public static class W
             c.KeyboardHandled = true;
         }
 
-        // A click inside keeps editing and drops the selection; a click outside
+        // A click inside puts the caret where the pointer is; a click outside
         // finishes, which is what the shell does.
-        if (c.Clicked(r)) st.SelectAll = false;
+        if (c.Clicked(r))
+        {
+            st.Caret = st.Anchor = IndexAt(c, text, c.MouseX - x);
+        }
         else if (c.In.Pressed(MouseButton.Left) && !r.Contains(c.MouseX, c.MouseY))
             result = RenameResult.Commit;
 
-        c.R.PushClip(r.Deflate(2, 0, 2, 0));
-        float tw = c.F.Ui.Measure(value);
-        float offset = MathF.Max(0, tw - (r.W - 8));
-        float x = r.X + 3 - offset;
+        // The caret may have moved; the scroll follows it before anything is
+        // painted, so the caret is never off the end of the box.
+        st.Caret = Math.Clamp(st.Caret, 0, text.Length);
+        st.Anchor = Math.Clamp(st.Anchor, 0, text.Length);
 
-        if (st.SelectAll && value.Length > 0)
+        caretW = c.F.Ui.Measure(text[..st.Caret]);
+        offset = MathF.Max(0, caretW - inner);
+        x = r.X + 3 - offset;
+
+        value = text;
+
+        c.R.PushClip(r.Deflate(2, 0, 2, 0));
+
+        if (st.HasSelection)
         {
-            c.R.FillRect(new Rect(x, r.Y + 2, tw, r.H - 4), t.Selection);
-            c.F.Ui.Draw(c.R, value, x, textY, t.SelectionText);
+            float a = c.F.Ui.Measure(text[..st.Start]);
+            float b = c.F.Ui.Measure(text[..st.End]);
+            c.R.FillRect(new Rect(x + a, r.Y + 2, b - a, r.H - 4), t.Selection);
+
+            c.F.Ui.Draw(c.R, text[..st.Start], x, textY, t.Text);
+            c.F.Ui.Draw(c.R, text[st.Start..st.End], x + a, textY, t.SelectionText);
+            c.F.Ui.Draw(c.R, text[st.End..], x + b, textY, t.Text);
         }
         else
         {
-            c.F.Ui.Draw(c.R, value, x, textY, t.Text);
+            c.F.Ui.Draw(c.R, text, x, textY, t.Text);
             if ((c.Time % 1.06) < 0.53)
-                c.R.FillRect(new Rect(x + tw, r.Y + 3, 1.4f, r.H - 6), t.Text);
+                c.R.FillRect(new Rect(x + caretW, r.Y + 3, 1.4f, r.H - 6), t.Text);
         }
+
         c.R.PopClip();
 
         if (result != RenameResult.Editing) c.ForgetState(id);
         return result;
+    }
+
+    /// <summary>Which character boundary a distance along the text is nearest,
+    /// which is where a click puts the caret.</summary>
+    static int IndexAt(UiContext c, string value, float dx)
+    {
+        if (dx <= 0) return 0;
+
+        for (int i = 0; i < value.Length; i++)
+        {
+            float before = c.F.Ui.Measure(value[..i]);
+            float after = c.F.Ui.Measure(value[..(i + 1)]);
+            if (dx < (before + after) * 0.5f) return i;
+        }
+        return value.Length;
     }
 
     // ---- slider and progress --------------------------------------------
@@ -725,7 +847,9 @@ public static class W
         c.R.DrawRect(r, t.ControlBorder);
         var inner = r.Deflate(2);
         float w = inner.W * Math.Clamp(fraction, 0, 1);
-        if (t.Id == ThemeId.Seven)
+        if (t.Id == ThemeId.Metro)
+            c.R.FillRect(new Rect(inner.X, inner.Y, w, inner.H), t.ProgressFill);
+        else if (t.Id == ThemeId.Seven)
             c.R.FillRectV(new Rect(inner.X, inner.Y, w, inner.H), Color.Rgb(0x2FE33F), t.ProgressFill);
         else
         {
@@ -758,7 +882,14 @@ public static class W
             var tab = new Rect(x, r.Y + (sel ? 0 : 2), w, h + (sel ? 1 : -2));
             bool hover = c.Hovering(tab);
 
-            if (t.Id == ThemeId.Seven)
+            if (t.Id == ThemeId.Metro)
+            {
+                // A tab is a rectangle with an accent bar over the selected one.
+                c.R.FillRect(tab, sel ? t.Face : hover ? t.FaceDark : Color.Rgb(0xE8E8E8));
+                c.R.DrawRect(tab, t.ControlBorder);
+                if (sel) c.R.FillRect(new Rect(tab.X, tab.Y, tab.W, 3), t.Accent);
+            }
+            else if (t.Id == ThemeId.Seven)
             {
                 c.R.RoundedRectV(tab, 3, sel ? Color.White : hover ? Color.Rgb(0xEAF6FD) : t.FaceDark,
                                  sel ? Color.White : t.FaceDark, t.ControlBorder, 1);
@@ -782,7 +913,8 @@ public static class W
     public static void ToolbarBackground(UiContext c, Rect r)
     {
         var t = c.Theme;
-        if (t.Id == ThemeId.Seven) c.R.FillRectV(r, Color.Rgb(0xF8F8F8), Color.Rgb(0xE8E8E8));
+        if (t.Id == ThemeId.Metro) c.R.FillRect(r, Color.Rgb(0xF5F5F5));
+        else if (t.Id == ThemeId.Seven) c.R.FillRectV(r, Color.Rgb(0xF8F8F8), Color.Rgb(0xE8E8E8));
         else c.R.FillRectV(r, Color.Rgb(0xFFFFFF), t.Face);
         c.R.FillRect(new Rect(r.X, r.Bottom - 1, r.W, 1), Color.Rgba(0x000000, 30));
     }

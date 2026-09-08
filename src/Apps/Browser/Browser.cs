@@ -13,7 +13,16 @@ namespace Miminus.Apps;
 /// There is no network here: pages are small hand-drawn layouts keyed by URL,
 /// which is enough to reproduce the three sites the videos actually visit —
 /// the Mozilla download page, a Google search for «скачать интернет», and the
-/// speed-dial grid.</summary>
+/// speed-dial grid.
+///
+/// The chrome around those pages is the one both browsers grew into. Neither
+/// has a menu bar any more: the tabs sit at the top with a stripe of the brand
+/// colour along the one that is showing, the address is a rounded pill with the
+/// padlock inside it, the buttons are flat glyphs that only take a shape when
+/// the pointer is on them, and everything that used to be «Файл», «Правка» and
+/// the rest is behind one button on the right — three lines for Фигефох, the
+/// round O for Орега. It is the same window underneath; it stopped looking
+/// like 2009.</summary>
 /// <summary>Which of the two browsers from the videos this window is.</summary>
 public enum BrowserBrand
 {
@@ -44,11 +53,44 @@ public sealed class BrowserWindow : OsWindow
 
     string BrandName => L.T(_brand == BrowserBrand.Orega ? "browser.orega" : "browser.figefoch");
 
+    /// <summary>Everything that differs between the two browsers, which by this
+    /// point in their lives is a palette and one button glyph. The rest of the
+    /// chrome is the same shape in both — that is what happened to browsers.</summary>
+    readonly record struct Skin(Color Strip, Color TabActive, Color TabHover, Color Toolbar,
+                                Color Line, Color Field, Color FieldEdge, Color Accent,
+                                Color Ink, Color InkDim);
+
+    /// <summary>Фигефох wears Photon: a grey tab strip, a near-white toolbar and
+    /// a blue stripe over the tab that is showing. Орега wears its own red over
+    /// the same shapes.</summary>
+    Skin S => _brand == BrowserBrand.Orega
+        ? new Skin(Color.Rgb(0xDCDCDE), Color.Rgb(0xFFFFFF), Color.Rgb(0xEBEBED),
+                   Color.Rgb(0xFFFFFF), Color.Rgb(0xD2D2D4), Color.Rgb(0xF1F1F2),
+                   Color.Rgb(0xD8D8DA), Color.Rgb(0xFF1B2D), Color.Rgb(0x2B2B2B),
+                   Color.Rgb(0x8A8A8E))
+        : new Skin(Color.Rgb(0xE3E4E6), Color.Rgb(0xF9F9FA), Color.Rgb(0xEDEDF0),
+                   Color.Rgb(0xF9F9FA), Color.Rgb(0xD7D7DB), Color.Rgb(0xFFFFFF),
+                   Color.Rgb(0xC5C5C8), Color.Rgb(0x0A84FF), Color.Rgb(0x0C0C0D),
+                   Color.Rgb(0x737373));
+
     public override string Title
         => (Cur.Title.Length > 0 ? Cur.Title + " — " : "") + BrandName;
 
     public override float MinWidth => 560;
     public override float MinHeight => 380;
+
+    /// <summary>The tabs live in the title bar. There is nowhere else left for
+    /// them: both browsers reached the same conclusion within a year of each
+    /// other, and it is the single change that dates a browser window fastest.
+    /// A full-screen window has no caption to put them in, so that one keeps
+    /// its own strip inside the client area.</summary>
+    public override bool CaptionTabs => !Immersive;
+
+    public override void DrawCaptionTabs(UiContext c, Rect strip)
+    {
+        _ctx = c;
+        DrawTabStrip(c, strip, overCaption: true);
+    }
 
     Tab Cur => _tabs[Math.Clamp(_active, 0, _tabs.Count - 1)];
 
@@ -62,49 +104,46 @@ public sealed class BrowserWindow : OsWindow
         Navigate(brand == BrowserBrand.Orega
             ? "about:home"
             : "http://www.mozilla-europe.org/ru/firefox/", null, record: false);
-        BuildMenu();
     }
 
-    void BuildMenu()
+    /// <summary>What used to be the menu bar, folded into the one button on the
+    /// right of the toolbar — which is where both browsers put it when they
+    /// stopped having a menu bar to fold it out of.</summary>
+    List<MenuItem> AppMenu() => new()
     {
-        Menu = new MenuBar();
-        Menu.Add(L.T("browser.file"), () => new List<MenuItem>
-        {
-            MenuItem.Of(L.T("browser.new_tab"), () => NewTab(_ctx), shortcut: "Ctrl+T"),
-            MenuItem.Of(L.T("browser.close_tab"), () => CloseTab(_active, _ctx),
-                        enabled: _tabs.Count > 1, shortcut: "Ctrl+W"),
-            MenuItem.Sep(),
-            MenuItem.Of(L.T("browser.exit"), Close),
-        });
-        Menu.Add(L.T("browser.edit"), () => new List<MenuItem>
+        MenuItem.Of(L.T("browser.new_tab"), () => NewTab(_ctx), IconId.Globe, "Ctrl+T"),
+        MenuItem.Of(L.T("browser.close_tab"), () => CloseTab(_active, _ctx), IconId.None,
+                    "Ctrl+W", _tabs.Count > 1),
+        MenuItem.Sep(),
+        MenuItem.Of(L.T("browser.reload"), () => { Cur.Scroll = 0; _ctx.Sound(Sfx.Navigate, 0.5f); },
+                    IconId.None, "F5"),
+        MenuItem.Of(L.T("browser.home"), () => Navigate("about:home", _ctx), IconId.Star, "Alt+Home"),
+        MenuItem.Sep(),
+        MenuItem.Sub(L.T("browser.bookmarks"), Bookmarks(), IconId.Star),
+        MenuItem.Sub(L.T("browser.edit"), new List<MenuItem>
         {
             MenuItem.Of(L.T("browser.copy_address"), () => Clipboard.SetText(Cur.Url)),
-            MenuItem.Of(L.T("browser.paste_and_go"), () =>
-                Navigate(Clipboard.GetText().Trim(), _ctx)),
-        });
-        Menu.Add(L.T("browser.view"), () => new List<MenuItem>
-        {
-            MenuItem.Of(L.T("browser.reload"), () => { Cur.Scroll = 0; _ctx.Sound(Sfx.Navigate, 0.5f); }, shortcut: "F5"),
-            MenuItem.Of(L.T("browser.home"), () => Navigate("about:home", _ctx), shortcut: "Alt+Home"),
-        });
-        Menu.Add(L.T("browser.bookmarks"), () => new List<MenuItem>
-        {
-            MenuItem.Of("mozilla-europe.org", () => Navigate("http://www.mozilla-europe.org/ru/firefox/", _ctx), IconId.Firefox),
-            MenuItem.Of("google.ru", () => Navigate("http://www.google.ru/", _ctx), IconId.Globe),
-            MenuItem.Of(L.T("browser.sodly"), () => Navigate("http://www.sodly.google.com/", _ctx), IconId.Globe),
-            MenuItem.Of(L.T("browser.speed_dial"), () => Navigate("about:home", _ctx), IconId.Star),
-            MenuItem.Of("miminus-os.ru", () => Navigate("http://miminus-os.ru/", _ctx), IconId.Star),
-        });
-        Menu.Add(L.T("browser.help"), () => new List<MenuItem>
-        {
-            MenuItem.Of(L.T("browser.about"), () =>
-                Shell.MessageBox(_ctx, BrandName,
-                    L.T(_brand == BrowserBrand.Orega
-                        ? "browser.firefox_web_browser_3_6_part_of_miminus_os_r"
-                        : "browser.figefoch_about"),
-                    MsgButtons.Ok, Icon, null, Sfx.Info), IconId.DlgInfo),
-        });
-    }
+            MenuItem.Of(L.T("browser.paste_and_go"), () => Navigate(Clipboard.GetText().Trim(), _ctx)),
+        }),
+        MenuItem.Sep(),
+        MenuItem.Of(L.T("browser.about"), () =>
+            Shell.MessageBox(_ctx, BrandName,
+                L.T(_brand == BrowserBrand.Orega
+                    ? "browser.firefox_web_browser_3_6_part_of_miminus_os_r"
+                    : "browser.figefoch_about"),
+                MsgButtons.Ok, Icon, null, Sfx.Info), IconId.DlgInfo),
+        MenuItem.Of(L.T("browser.exit"), Close),
+    };
+
+    List<MenuItem> Bookmarks() => new()
+    {
+        MenuItem.Of("mozilla-europe.org",
+                    () => Navigate("http://www.mozilla-europe.org/ru/firefox/", _ctx), IconId.Firefox),
+        MenuItem.Of("google.ru", () => Navigate("http://www.google.ru/", _ctx), IconId.Globe),
+        MenuItem.Of(L.T("browser.sodly"), () => Navigate("http://www.sodly.google.com/", _ctx), IconId.Globe),
+        MenuItem.Of(L.T("browser.speed_dial"), () => Navigate("about:home", _ctx), IconId.Star),
+        MenuItem.Of("miminus-os.ru", () => Navigate("http://miminus-os.ru/", _ctx), IconId.Star),
+    };
 
     UiContext _ctx;
 
@@ -164,17 +203,27 @@ public sealed class BrowserWindow : OsWindow
         c.R.FillRect(client, c.Theme.Face);
 
         var area = client;
-        DrawTabStrip(c, area.CutTop(26));
-        DrawNavBar(c, area.CutTop(30));
-        var status = area.CutBottom(20);
+        // In a window the tabs are up in the caption; full screen there is no
+        // caption, so they come back inside.
+        if (Immersive) DrawTabStrip(c, area.CutTop(32), overCaption: false);
+        DrawNavBar(c, area.CutTop(38));
 
         c.R.FillRect(area, Color.White);
         c.R.PushClip(area);
         DrawPage(c, area);
-        c.R.PopClip();
-        c.R.DrawRect(area, c.Theme.ControlBorder);
 
-        W.StatusBar(c, status, L.T("browser.done"), "", L.T("browser.no_connection_required"));
+        // The status bar went away and came back as this: a small tab of text
+        // in the bottom-left corner, over the page rather than under it.
+        string note = L.T("browser.no_connection_required");
+        var bubble = new Rect(area.X, area.Bottom - c.F.Small.Height - 6,
+                              c.F.Small.Measure(note) + 16, c.F.Small.Height + 6);
+        c.R.FillRect(bubble, Color.Rgb(0xF1F1F2));
+        c.R.FillRect(new Rect(bubble.X, bubble.Y, bubble.W, 1), Color.Rgb(0xDCDCDE));
+        c.R.FillRect(new Rect(bubble.Right - 1, bubble.Y, 1, bubble.H), Color.Rgb(0xDCDCDE));
+        c.F.Small.Draw(c.R, note, bubble.X + 8, bubble.CenterY - c.F.Small.Height * 0.5f,
+                       Color.Rgb(0x5A5A5E));
+
+        c.R.PopClip();
 
         if (!c.KeyboardHandled && c.In.Ctrl)
         {
@@ -184,61 +233,96 @@ public sealed class BrowserWindow : OsWindow
         }
     }
 
-    void DrawTabStrip(UiContext c, Rect strip)
+    /// <summary>The tab strip both browsers ended up with: square tabs that
+    /// meet without a gap, no bevel anywhere, and a stripe of the brand colour
+    /// along the top of the one that is showing.
+    ///
+    /// Over the caption it draws no background of its own — the title bar is
+    /// already painted, and the idle tabs are a wash over it, which is how a
+    /// browser's tabs sit in a title bar without looking pasted on.</summary>
+    void DrawTabStrip(UiContext c, Rect strip, bool overCaption)
     {
-        var t = c.Theme;
-        c.R.FillRectV(strip, Color.Rgb(0xD8DCE4), Color.Rgb(0xB8BEC8));
+        var k = S;
+        if (!overCaption) c.R.FillRect(strip, k.Strip);
 
-        float x = strip.X + 2;
-        float tabW = MathF.Min(190, (strip.W - 40) / Math.Max(1, _tabs.Count));
+        float tabW = Math.Clamp((strip.W - 44) / Math.Max(1, _tabs.Count), 92, 236);
+        float x = strip.X;
 
         for (int i = 0; i < _tabs.Count; i++)
         {
             var tab = _tabs[i];
             bool sel = i == _active;
-            var r = new Rect(x, strip.Y + (sel ? 2 : 4), tabW, strip.H - (sel ? 2 : 4));
+            var r = new Rect(x, strip.Y, tabW, strip.H);
+            bool hot = c.Hovering(r);
 
-            c.R.RoundedRectV(r, 4, sel ? Color.White : Color.Rgb(0xE6E9EE),
-                             sel ? Color.White : Color.Rgb(0xCED3DB), Color.Rgb(0x9AA2AE), 1);
-            if (sel) c.R.FillRect(new Rect(r.X + 1, r.Bottom - 3, r.W - 2, 3), Color.White);
+            if (sel)
+            {
+                // The tab in front is painted in the toolbar's own colour, so
+                // it and the bar below it read as one shape.
+                c.R.FillRect(r, overCaption ? k.Toolbar : k.TabActive);
+                c.R.FillRect(new Rect(r.X, r.Y, r.W, 2), k.Accent);
+            }
+            else if (hot) c.R.FillRect(r, overCaption ? Color.Rgba(0xFFFFFF, 60) : k.TabHover);
+            else if (overCaption) c.R.FillRect(r.Deflate(0, 3, 0, 0), Color.Rgba(0xFFFFFF, 26));
 
-            Icons.Draw(c.R, IconId.Globe, new Rect(r.X + 5, r.CenterY - 7, 14, 14));
-            c.R.PushClip(new Rect(r.X + 22, r.Y, r.W - 42, r.H));
+            // The separator between two idle tabs, which is all that divides
+            // them now that they have no edges of their own.
+            if (!sel && i + 1 <= _tabs.Count - 1 && _active != i + 1)
+                c.R.FillRect(new Rect(r.Right - 1, r.Y + 8, 1, r.H - 16),
+                             overCaption ? Color.Rgba(0xFFFFFF, 60) : Color.Rgba(0x000000, 40));
+
+            Icons.Draw(c.R, IconId.Globe, new Rect(r.X + 9, r.CenterY - 8, 16, 16));
+
+            var close = new Rect(r.Right - 24, r.CenterY - 9, 18, 18);
+            c.R.PushClip(new Rect(r.X + 31, r.Y, MathF.Max(0, close.X - r.X - 35), r.H));
             c.F.Small.Draw(c.R, tab.Title.Length > 0 ? tab.Title : L.T("browser.new_tab"),
-                           r.X + 22, r.CenterY - c.F.Small.Height * 0.5f, t.Text);
+                           r.X + 31, r.CenterY - c.F.Small.Height * 0.5f,
+                           sel ? k.Ink : overCaption ? c.Theme.CaptionTextActive : k.InkDim);
             c.R.PopClip();
 
-            var close = new Rect(r.Right - 18, r.CenterY - 7, 14, 14);
-            if (c.Hovering(close)) c.R.RoundedRect(close, 2, Color.Rgba(0xD04040, 200));
-            c.R.Line(close.X + 4, close.Y + 4, close.Right - 4, close.Bottom - 4,
-                     c.Hovering(close) ? Color.White : Color.Rgb(0x606060), 1.5f);
-            c.R.Line(close.Right - 4, close.Y + 4, close.X + 4, close.Bottom - 4,
-                     c.Hovering(close) ? Color.White : Color.Rgb(0x606060), 1.5f);
+            // The close cross appears on the tab under the pointer and on the
+            // one showing, and nowhere else.
+            if (sel || hot)
+            {
+                bool overClose = c.Hovering(close);
+                if (overClose) c.R.RoundedRect(close, 3, Color.Rgba(0x000000, 26));
+                var ink = sel || overClose ? (overClose ? k.Ink : k.InkDim)
+                        : overCaption ? c.Theme.CaptionTextActive : k.InkDim;
+                c.R.Line(close.X + 6, close.Y + 6, close.Right - 6, close.Bottom - 6, ink, 1.4f);
+                c.R.Line(close.Right - 6, close.Y + 6, close.X + 6, close.Bottom - 6, ink, 1.4f);
+                if (c.Clicked(close)) { CloseTab(i, c); return; }
+            }
 
-            if (c.Clicked(close)) { CloseTab(i, c); return; }
-            else if (c.Clicked(r)) { _active = i; _addressText = tab.Url; c.SoundAt(Sfx.Tick, r, 0.3f); }
-
-            x += tabW + 2;
+            if (c.Clicked(r)) { _active = i; _addressText = tab.Url; c.SoundAt(Sfx.Tick, r, 0.3f); }
+            x += tabW;
         }
 
-        var plus = new Rect(x + 2, strip.Y + 5, 20, strip.H - 8);
-        if (c.Hovering(plus)) c.R.RoundedRect(plus, 3, Color.Rgba(0xFFFFFF, 160));
-        c.R.FillRect(new Rect(plus.CenterX - 5, plus.CenterY - 1, 10, 2), Color.Rgb(0x404040));
-        c.R.FillRect(new Rect(plus.CenterX - 1, plus.CenterY - 5, 2, 10), Color.Rgb(0x404040));
+        var plus = new Rect(x + 2, strip.CenterY - 11, 22, 22);
+        if (c.Hovering(plus))
+            c.R.RoundedRect(plus, 3, overCaption ? Color.Rgba(0xFFFFFF, 60) : Color.Rgba(0x000000, 26));
+        var plusInk = overCaption ? c.Theme.CaptionTextActive : k.InkDim;
+        c.R.FillRect(new Rect(plus.CenterX - 5.5f, plus.CenterY - 0.75f, 11, 1.5f), plusInk);
+        c.R.FillRect(new Rect(plus.CenterX - 0.75f, plus.CenterY - 5.5f, 1.5f, 11), plusInk);
         c.Tooltip(plus, L.T("browser.new_tab"));
         if (c.Clicked(plus)) NewTab(c);
     }
 
+    /// <summary>The toolbar: four flat glyphs, one rounded pill for the address
+    /// with the padlock and the star inside it, a second pill for the search,
+    /// and the button that holds the menu.</summary>
     void DrawNavBar(UiContext c, Rect bar)
     {
-        var t = c.Theme;
-        W.ToolbarBackground(c, bar);
+        var k = S;
         var tab = Cur;
 
-        float x = bar.X + 4;
-        float bs = bar.H - 8;
+        c.R.FillRect(bar, k.Toolbar);
+        c.R.FillRect(new Rect(bar.X, bar.Bottom - 1, bar.W, 1), k.Line);
 
-        if (NavButton(c, ".back", new Rect(x, bar.Y + 4, bs, bs), 3, tab.Back.Count > 0))
+        float bs = 28;
+        float y = bar.CenterY - bs * 0.5f;
+        float x = bar.X + 4;
+
+        if (Glyph(c, new Rect(x, y, bs, bs), tab.Back.Count > 0, GlyphKind.Back))
         {
             tab.Forward.Add(tab.Url);
             string url = tab.Back[^1];
@@ -246,9 +330,9 @@ public sealed class BrowserWindow : OsWindow
             tab.Url = url; tab.Title = TitleFor(url); tab.Scroll = 0; _addressText = url;
             c.Sound(Sfx.Navigate, 0.45f);
         }
-        x += bs + 3;
+        x += bs + 2;
 
-        if (NavButton(c, ".fwd", new Rect(x, bar.Y + 4, bs, bs), 1, tab.Forward.Count > 0))
+        if (Glyph(c, new Rect(x, y, bs, bs), tab.Forward.Count > 0, GlyphKind.Forward))
         {
             tab.Back.Add(tab.Url);
             string url = tab.Forward[^1];
@@ -256,34 +340,60 @@ public sealed class BrowserWindow : OsWindow
             tab.Url = url; tab.Title = TitleFor(url); tab.Scroll = 0; _addressText = url;
             c.Sound(Sfx.Navigate, 0.45f);
         }
-        x += bs + 3;
+        x += bs + 2;
 
-        // Reload.
-        var reload = new Rect(x, bar.Y + 4, bs, bs);
-        if (c.Hovering(reload)) c.R.RoundedRect(reload, 3, t.Hot);
-        DrawReloadGlyph(c, reload);
-        if (c.Clicked(reload)) { tab.Scroll = 0; c.Sound(Sfx.Navigate, 0.5f); }
-        x += bs + 3;
+        if (Glyph(c, new Rect(x, y, bs, bs), true, GlyphKind.Reload))
+        {
+            tab.Scroll = 0;
+            c.Sound(Sfx.Navigate, 0.5f);
+        }
+        x += bs + 2;
 
-        var home = new Rect(x, bar.Y + 4, bs, bs);
-        if (c.Hovering(home)) c.R.RoundedRect(home, 3, t.Hot);
-        Icons.Draw(c.R, IconId.Star, home.Deflate(3));
-        c.Tooltip(home, L.T("browser.speed_dial"));
-        if (c.Clicked(home)) Navigate("about:home", c);
-        x += bs + 6;
+        var homeR = new Rect(x, y, bs, bs);
+        if (Glyph(c, homeR, true, GlyphKind.Home)) Navigate("about:home", c);
+        c.Tooltip(homeR, L.T("browser.speed_dial"));
+        x += bs + 8;
 
-        // Address field + Go.
-        var go = new Rect(bar.Right - 190, bar.Y + 4, 52, bs);
-        var search = new Rect(go.X - 122, bar.Y + 4, 118, bs);
-        var addr = new Rect(x, bar.Y + 4, search.X - x - 6, bs);
+        // ---- the button that holds what used to be the menu bar ---------------
+        var menu = new Rect(bar.Right - bs - 6, y, bs, bs);
+        if (Glyph(c, menu, true, _brand == BrowserBrand.Orega ? GlyphKind.Opera : GlyphKind.Burger))
+            Shell.Menus.Open(AppMenu(), menu.X - 120, menu.Bottom + 2, this, c, 190);
 
+        // ---- the two pills -----------------------------------------------------
+        var search = new Rect(menu.X - 176, y + 2, 168, bs - 4);
+        var addr = new Rect(x, y + 2, search.X - x - 8, bs - 4);
+
+        DrawAddressPill(c, addr, tab, k);
+        DrawSearchPill(c, search, k);
+    }
+
+    /// <summary>The address bar, which is a pill now: the padlock on the left,
+    /// the text in the middle and the bookmark star on the right — all inside
+    /// the one shape, the way both browsers ended up drawing it.</summary>
+    void DrawAddressPill(UiContext c, Rect addr, Tab tab, Skin k)
+    {
         _addressFocused = c.Focus == Id + ".addr";
-        c.R.FillRect(addr, Color.White);
-        c.R.DrawRect(addr, _addressFocused ? t.ControlBorderHot : t.FieldBorder);
-        Icons.Draw(c.R, IconId.Globe, new Rect(addr.X + 3, addr.CenterY - 7, 14, 14));
 
-        if (c.Hovering(addr)) c.Cursor = CursorShape.Text;
-        if (c.Clicked(addr)) { c.Focus = Id + ".addr"; _addressText = tab.Url; }
+        float rad = addr.H * 0.5f;
+        c.R.RoundedRect(addr, rad, _addressFocused ? Color.White : k.Field,
+                        _addressFocused ? k.Accent : k.FieldEdge, _addressFocused ? 1.6f : 1);
+
+        // The padlock: green and shut for a site, grey and open for about: and
+        // for a search, which is what the difference means.
+        bool secure = tab.Url.StartsWith("http");
+        Padlock(c, new Rect(addr.X + 8, addr.CenterY - 7, 14, 14),
+                secure ? Color.Rgb(0x12BC00) : k.InkDim, secure);
+
+        var star = new Rect(addr.Right - 26, addr.CenterY - 9, 18, 18);
+        bool starHot = c.Hovering(star);
+        if (starHot) c.R.RoundedRect(star, 3, Color.Rgba(0x000000, 24));
+        Icons.Draw(c.R, IconId.Star, star.Deflate(2));
+        c.Tooltip(star, L.T("browser.bookmarks"));
+        if (c.Clicked(star)) Shell.Menus.Open(Bookmarks(), star.X - 80, star.Bottom + 4, this, c);
+
+        var field = new Rect(addr.X + 28, addr.Y, star.X - addr.X - 32, addr.H);
+        if (c.Hovering(field)) c.Cursor = CursorShape.Text;
+        if (c.Clicked(field)) { c.Focus = Id + ".addr"; _addressText = tab.Url; }
 
         if (_addressFocused && !c.KeyboardHandled)
         {
@@ -301,21 +411,46 @@ public sealed class BrowserWindow : OsWindow
             if (c.In.KeyPressed(Keys.Escape)) { _addressText = tab.Url; c.Focus = null; c.KeyboardHandled = true; }
         }
 
+        // The host is drawn in full ink and the rest of the address in grey,
+        // which is the one piece of typography the newer bars actually added.
         string shown = _addressFocused ? _addressText : tab.Url;
-        c.R.PushClip(new Rect(addr.X + 20, addr.Y, addr.W - 24, addr.H));
-        c.F.Ui.Draw(c.R, shown, addr.X + 20, addr.CenterY - c.F.Ui.Height * 0.5f, t.Text);
-        if (_addressFocused && (c.Time % 1.06) < 0.53)
-            c.R.FillRect(new Rect(addr.X + 20 + c.F.Ui.Measure(shown), addr.Y + 4, 1.4f, addr.H - 8), t.Text);
-        c.R.PopClip();
+        c.R.PushClip(field);
+        float tx = field.X;
+        float ty = field.CenterY - c.F.Ui.Height * 0.5f;
 
-        // Search box.
-        c.R.FillRect(search, Color.White);
-        c.R.DrawRect(search, c.Focus == Id + ".search" ? t.ControlBorderHot : t.FieldBorder);
-        Icons.Draw(c.R, IconId.Search, new Rect(search.X + 3, search.CenterY - 7, 14, 14));
+        if (!_addressFocused && shown.StartsWith("http"))
+        {
+            int slashes = shown.IndexOf("//", StringComparison.Ordinal);
+            int hostEnd = slashes < 0 ? -1 : shown.IndexOf('/', slashes + 2);
+            string scheme = slashes < 0 ? "" : shown[..(slashes + 2)];
+            string host = hostEnd < 0 ? shown[(slashes + 2)..] : shown[(slashes + 2)..hostEnd];
+            string rest = hostEnd < 0 ? "" : shown[hostEnd..];
+
+            c.F.Ui.Draw(c.R, scheme, tx, ty, k.InkDim); tx += c.F.Ui.Measure(scheme);
+            c.F.Ui.Draw(c.R, host, tx, ty, k.Ink); tx += c.F.Ui.Measure(host);
+            c.F.Ui.Draw(c.R, rest, tx, ty, k.InkDim);
+        }
+        else
+        {
+            c.F.Ui.Draw(c.R, shown, tx, ty, k.Ink);
+            if (_addressFocused && (c.Time % 1.06) < 0.53)
+                c.R.FillRect(new Rect(tx + c.F.Ui.Measure(shown), addr.Y + 5, 1.4f, addr.H - 10), k.Ink);
+        }
+        c.R.PopClip();
+    }
+
+    void DrawSearchPill(UiContext c, Rect search, Skin k)
+    {
+        bool focused = c.Focus == Id + ".search";
+        float rad = search.H * 0.5f;
+        c.R.RoundedRect(search, rad, focused ? Color.White : k.Field,
+                        focused ? k.Accent : k.FieldEdge, focused ? 1.6f : 1);
+
+        Icons.Draw(c.R, IconId.Search, new Rect(search.X + 8, search.CenterY - 7, 14, 14));
         if (c.Hovering(search)) c.Cursor = CursorShape.Text;
         if (c.Clicked(search)) c.Focus = Id + ".search";
 
-        if (c.Focus == Id + ".search" && !c.KeyboardHandled)
+        if (focused && !c.KeyboardHandled)
         {
             foreach (char ch in c.In.TypedChars)
             {
@@ -329,40 +464,101 @@ public sealed class BrowserWindow : OsWindow
                 c.KeyboardHandled = true;
             }
         }
-        c.R.PushClip(new Rect(search.X + 20, search.Y, search.W - 24, search.H));
-        c.F.Ui.Draw(c.R, _searchText.Length > 0 ? _searchText : L.T("browser.search"),
-                    search.X + 20, search.CenterY - c.F.Ui.Height * 0.5f,
-                    _searchText.Length > 0 ? t.Text : t.TextDisabled);
-        c.R.PopClip();
 
-        if (W.Button(c, Id + ".go", go, L.T("browser.go")))
-            Navigate(_addressFocused ? _addressText : tab.Url, c);
+        c.R.PushClip(new Rect(search.X + 26, search.Y, search.W - 34, search.H));
+        c.F.Ui.Draw(c.R, _searchText.Length > 0 ? _searchText : L.T("browser.search"),
+                    search.X + 26, search.CenterY - c.F.Ui.Height * 0.5f,
+                    _searchText.Length > 0 ? k.Ink : k.InkDim);
+        if (focused && (c.Time % 1.06) < 0.53)
+            c.R.FillRect(new Rect(search.X + 26 + c.F.Ui.Measure(_searchText), search.Y + 5,
+                                  1.4f, search.H - 10), k.Ink);
+        c.R.PopClip();
     }
 
-    bool NavButton(UiContext c, string id, Rect r, int arrow, bool enabled)
+    enum GlyphKind { Back, Forward, Reload, Home, Burger, Opera }
+
+    /// <summary>A toolbar button with nothing around it until the pointer
+    /// arrives — which is the single biggest difference between a browser of
+    /// 2009 and one of five years later.</summary>
+    bool Glyph(UiContext c, Rect r, bool enabled, GlyphKind kind)
     {
+        var k = S;
         bool hover = enabled && c.Hovering(r);
-        if (hover) c.R.RoundedRect(r, 3, c.Theme.Hot);
-        c.R.FillCircle(r.CenterX, r.CenterY, r.W * 0.42f,
-                       enabled ? Color.Rgb(0x2E8AF5) : Color.Rgb(0xC8CCD2));
-        c.R.FillCircle(r.CenterX, r.CenterY - 1.5f, r.W * 0.35f,
-                       enabled ? Color.Rgb(0x7FC0FF) : Color.Rgb(0xDCDFE4));
-        W.Arrow(c, r, arrow, Color.White, 4f);
+        bool held = hover && c.In.IsDown(MouseButton.Left);
+
+        if (held) c.R.RoundedRect(r, 4, Color.Rgba(0x000000, 44));
+        else if (hover) c.R.RoundedRect(r, 4, Color.Rgba(0x000000, 26));
+
+        var ink = enabled ? k.Ink : Color.Rgb(0xBFBFC3);
+        float cx = MathF.Round(r.CenterX), cy = MathF.Round(r.CenterY);
+
+        switch (kind)
+        {
+            case GlyphKind.Back:
+            case GlyphKind.Forward:
+            {
+                // A chevron, not a filled triangle: two strokes meeting.
+                float d = kind == GlyphKind.Back ? 1 : -1;
+                c.R.Line(cx + d * 2.5f, cy - 5.5f, cx - d * 2.5f, cy, ink, 1.8f);
+                c.R.Line(cx - d * 2.5f, cy, cx + d * 2.5f, cy + 5.5f, ink, 1.8f);
+                break;
+            }
+
+            case GlyphKind.Reload:
+            {
+                // Three quarters of a ring and the arrowhead that closes it.
+                for (int i = 0; i < 20; i++)
+                {
+                    float a0 = -1.0f + i / 20f * 5.0f;
+                    float a1 = -1.0f + (i + 1) / 20f * 5.0f;
+                    c.R.Line(cx + MathF.Cos(a0) * 6, cy + MathF.Sin(a0) * 6,
+                             cx + MathF.Cos(a1) * 6, cy + MathF.Sin(a1) * 6, ink, 1.7f);
+                }
+                c.R.FillTriangle(cx + 3, cy - 8.5f, cx + 9, cy - 6.5f, cx + 3.4f, cy - 2.6f, ink);
+                break;
+            }
+
+            case GlyphKind.Home:
+            {
+                c.R.FillTriangle(cx, cy - 7, cx - 8, cy, cx + 8, cy, ink);
+                c.R.FillRect(new Rect(cx - 5.5f, cy - 0.5f, 11, 7.5f), ink);
+                c.R.FillRect(new Rect(cx - 1.6f, cy + 2.5f, 3.2f, 4.5f), k.Toolbar);
+                break;
+            }
+
+            case GlyphKind.Burger:
+                for (int i = -1; i <= 1; i++)
+                    c.R.FillRect(new Rect(cx - 7, cy + i * 5 - 0.9f, 14, 1.8f), ink);
+                break;
+
+            case GlyphKind.Opera:
+                // The O, which is the whole of that browser's identity.
+                c.R.DrawCircle(cx, cy, 8, k.Accent, 3f);
+                c.R.DrawCircle(cx, cy, 3.4f, k.Accent, 2.4f);
+                break;
+        }
+
         return enabled && c.Clicked(r);
     }
 
-    static void DrawReloadGlyph(UiContext c, Rect r)
+    /// <summary>The padlock in the address bar, drawn small enough that the
+    /// shackle is a half-ring and the body is a rectangle.</summary>
+    static void Padlock(UiContext c, Rect r, Color col, bool shut)
     {
-        float cx = r.CenterX, cy = r.CenterY, rad = r.W * 0.3f;
-        for (int i = 0; i <= 14; i++)
+        float cx = r.CenterX;
+        float top = r.Y + 1.5f;
+        float bodyY = r.Y + 6.5f;
+
+        for (int i = 0; i <= 10; i++)
         {
-            float a0 = 0.6f + i / 14f * 5.0f;
-            float a1 = 0.6f + (i + 1) / 14f * 5.0f;
-            c.R.Line(cx + MathF.Cos(a0) * rad, cy + MathF.Sin(a0) * rad,
-                     cx + MathF.Cos(a1) * rad, cy + MathF.Sin(a1) * rad, Color.Rgb(0x2E7D32), 2f);
+            float a0 = MathF.PI + i / 10f * MathF.PI;
+            float a1 = MathF.PI + (i + 1) / 10f * MathF.PI;
+            float ox = shut ? 0 : 2f;
+            c.R.Line(cx + MathF.Cos(a0) * 3.2f + ox, top + 3.4f + MathF.Sin(a0) * 3.4f,
+                     cx + MathF.Cos(a1) * 3.2f + ox, top + 3.4f + MathF.Sin(a1) * 3.4f, col, 1.4f);
         }
-        c.R.FillTriangle(cx + rad * 0.5f, cy - rad * 1.15f, cx + rad * 1.5f, cy - rad * 0.75f,
-                         cx + rad * 0.55f, cy - rad * 0.2f, Color.Rgb(0x2E7D32));
+
+        c.R.RoundedRect(new Rect(cx - 4.6f, bodyY, 9.2f, 6.8f), 1.4f, col);
     }
 
     // ---- page rendering --------------------------------------------------
@@ -393,26 +589,47 @@ public sealed class BrowserWindow : OsWindow
         else tab.Scroll = 0;
     }
 
-    /// <summary>Opera's Экспресс-панель: the 3×3 thumbnail grid from part 1.</summary>
+    /// <summary>Экспресс-панель, as it looks once the browser has caught up:
+    /// the tiles are rounded cards on a grey field, each one a flat block of
+    /// its site's colour with the initial in it, the numbers are gone, and the
+    /// search line is one pill in the middle of the page.
+    ///
+    /// The nine sites are still part 1's nine sites, and «Копирайт Михаила
+    /// Гревцова» is still printed under the search box, because that is the
+    /// joke — only the paint is newer.</summary>
     float DrawSpeedDial(UiContext c, Rect page)
     {
         var tab = Cur;
+        var k = S;
         float y = page.Y - tab.Scroll;
 
-        c.R.FillRect(page, Color.White);
+        c.R.FillRect(page, Color.Rgb(0xF5F5F7));
 
-        // Yandex-style search line at the top.
-        var searchRow = new Rect(page.CenterX - 190, y + 24, 380, 26);
-        c.F.UiBold.Draw(c.R, "Я", searchRow.X - 22, searchRow.CenterY - c.F.UiBold.Height * 0.5f, Color.Rgb(0xC4302B));
-        c.R.FillRect(searchRow, Color.White);
-        c.R.DrawRect(searchRow, Color.Rgb(0xA0A0A0));
+        // ---- the search pill in the middle of the page ------------------------
+        var searchRow = new Rect(page.CenterX - 220, y + 40, 440, 40);
+        bool focused = c.Focus == Id + ".search";
+        c.R.RoundedRect(searchRow, searchRow.H * 0.5f, Color.White,
+                        focused ? k.Accent : Color.Rgb(0xDCDCDE), focused ? 1.6f : 1);
+        Icons.Draw(c.R, IconId.Search, new Rect(searchRow.X + 12, searchRow.CenterY - 9, 18, 18));
+
+        c.R.PushClip(new Rect(searchRow.X + 38, searchRow.Y, searchRow.W - 110, searchRow.H));
         c.F.Ui.Draw(c.R, _searchText.Length > 0 ? _searchText : L.T("browser.search_2"),
-                    searchRow.X + 6, searchRow.CenterY - c.F.Ui.Height * 0.5f,
-                    _searchText.Length > 0 ? Color.Black : Color.Rgb(0xA0A0A0));
-        var searchBtn = new Rect(searchRow.Right + 6, searchRow.Y, 70, searchRow.H);
-        if (W.Button(c, Id + ".sd.search", searchBtn, L.T("browser.search_3")))
+                    searchRow.X + 38, searchRow.CenterY - c.F.Ui.Height * 0.5f,
+                    _searchText.Length > 0 ? k.Ink : k.InkDim);
+        c.R.PopClip();
+
+        var go = new Rect(searchRow.Right - 78, searchRow.Y + 5, 68, searchRow.H - 10);
+        bool goHot = c.Hovering(go);
+        c.R.RoundedRect(go, go.H * 0.5f, goHot ? k.Accent.Shade(1.12f) : k.Accent);
+        c.F.Small.DrawCentered(c.R, L.T("browser.search_3"), go, Color.White);
+        if (c.Clicked(go))
             Navigate("search:" + (_searchText.Length > 0 ? _searchText : "скачать интернет"), c);
         if (c.Clicked(searchRow)) c.Focus = Id + ".search";
+
+        // "Вот написано Копирайт Михаила Гревцова" (part 1, 01:36)
+        string copyright = L.T("browser.copyright_grevtsov");
+        c.F.Small.Draw(c.R, copyright, page.CenterX - c.F.Small.Measure(copyright) * 0.5f,
+                       searchRow.Bottom + 12, Color.Rgb(0x9A9A9E));
 
         (string title, string url, Color col)[] dials =
         {
@@ -427,47 +644,54 @@ public sealed class BrowserWindow : OsWindow
             (L.T("browser.miminus_os"), "http://miminus-os.ru/", Color.Rgb(0xE8B800)),
         };
 
-        float gridTop = searchRow.Bottom + 28;
-        float cellW = MathF.Min(190, (page.W - 80) / 3);
-        float cellH = cellW * 0.72f;
-        float gridW = cellW * 3 + 24;
+        float gridTop = searchRow.Bottom + 44;
+        float cellW = MathF.Min(196, (page.W - 96) / 3);
+        float cellH = cellW * 0.66f;
+        float gridW = cellW * 3 + 40;
         float gx = page.CenterX - gridW * 0.5f;
 
         for (int i = 0; i < dials.Length; i++)
         {
             var (title, url, col) = dials[i];
-            var cell = new Rect(gx + (i % 3) * (cellW + 12), gridTop + (i / 3) * (cellH + 34), cellW, cellH);
+            var cell = new Rect(gx + (i % 3) * (cellW + 20), gridTop + (i / 3) * (cellH + 46),
+                                cellW, cellH);
             bool hover = c.Hovering(cell);
 
-            c.R.FillRect(cell, Color.Rgb(0xF4F4F4));
-            c.R.DrawRect(cell, hover ? Color.Rgb(0x3C82C8) : Color.Rgb(0xC8C8C8), hover ? 2 : 1);
+            // The card lifts a little under the pointer, which is the whole of
+            // the animation a speed dial ever had.
+            var card = hover ? cell.Offset(0, -2) : cell;
+            if (hover) c.R.RoundedRect(card.Offset(0, 3), 5, Color.Rgba(0x000000, 34));
+            c.R.RoundedRect(card, 5, Color.White, Color.Rgb(0xE2E2E4));
 
-            // A tiny abstract "thumbnail" per site.
-            c.R.FillRect(new Rect(cell.X + 1, cell.Y + 1, cell.W - 2, cell.H * 0.24f), col);
-            for (int k = 0; k < 5; k++)
-                c.R.FillRect(new Rect(cell.X + 10, cell.Y + cell.H * 0.34f + k * (cell.H * 0.1f),
-                                      (cell.W - 20) * (0.9f - k * 0.13f), 3), Color.Rgb(0xD0D4DA));
+            // A flat block of the site's colour with its initial cut out of it,
+            // which is what a browser draws when it has no screenshot to show.
+            var face = new Rect(card.X + 1, card.Y + 1, card.W - 2, card.H - 2);
+            c.R.RoundedRect(face, 4, col);
+            string initial = title[..1].ToUpperInvariant();
+            c.F.Big.DrawCentered(c.R, initial, face, Color.Rgba(0xFFFFFF, 235));
 
-            // Index badge, as Opera numbered them.
-            c.F.Small.Draw(c.R, (i + 1).ToString(), cell.X + 4, cell.Y + 3, Color.White);
+            // The strip along the foot of the card carries the name, inside the
+            // card rather than under it.
+            var strip = new Rect(card.X + 1, card.Bottom - 23, card.W - 2, 22);
+            c.R.FillRect(strip, Color.Rgba(0xFFFFFF, 240));
+            c.R.PushClip(strip);
+            c.F.Small.DrawCentered(c.R, c.F.Small.Ellipsize(title, strip.W - 10), strip,
+                                   Color.Rgb(0x303030));
+            c.R.PopClip();
 
-            string label = c.F.Small.Ellipsize(title, cell.W);
-            float lw = c.F.Small.Measure(label);
-            c.F.Small.Draw(c.R, label, cell.CenterX - lw * 0.5f, cell.Bottom + 6, Color.Rgb(0x303030));
-
+            if (hover) c.R.RoundedRect(card, 5, Color.Transparent, k.Accent, 2);
             if (c.Clicked(cell)) Navigate(url, c);
         }
 
-        float bottom = gridTop + 3 * (cellH + 34) + 12;
-        // "Вот написано Копирайт Михаила Гревцова" (part 1, 01:36)
-        string copyright = L.T("browser.copyright_grevtsov");
-        c.F.Small.Draw(c.R, copyright, page.CenterX - c.F.Small.Measure(copyright) * 0.5f,
-                       gridTop - 20, Color.Rgb(0x808080));
+        float bottom = gridTop + 3 * (cellH + 46) + 6;
 
         string hint = L.T("browser.what_is_speed_dial");
-        c.F.Ui.Draw(c.R, hint, page.X + 24, bottom, Color.Rgb(0x2255AA));
         string hide = L.T("browser.hide_speed_dial");
-        c.F.Ui.Draw(c.R, hide, page.Right - c.F.Ui.Measure(hide) - 30, bottom, Color.Rgb(0x2255AA));
+        var hintR = new Rect(page.X + 30, bottom, c.F.Ui.Measure(hint), c.F.Ui.Height + 4);
+        var hideR = new Rect(page.Right - c.F.Ui.Measure(hide) - 36, bottom,
+                             c.F.Ui.Measure(hide), c.F.Ui.Height + 4);
+        c.F.Ui.Draw(c.R, hint, hintR.X, hintR.Y, c.Hovering(hintR) ? k.Accent : Color.Rgb(0x8A8A8E));
+        c.F.Ui.Draw(c.R, hide, hideR.X, hideR.Y, c.Hovering(hideR) ? k.Accent : Color.Rgb(0x8A8A8E));
 
         return bottom + 40 - page.Y + tab.Scroll;
     }

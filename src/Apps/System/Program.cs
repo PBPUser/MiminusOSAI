@@ -13,25 +13,6 @@ public sealed class TerminalProgram : IProgram
     public OsWindow Create(ShellHost shell, VNode document) => new TerminalWindow();
 }
 
-/// <summary>Диспетчер задач.</summary>
-public sealed class TaskManagerProgram : IProgram
-{
-    public string Id => "taskmgr";
-    public string NameKey => "taskbar.task_manager";
-    public IconId Icon => IconId.Settings;
-    public bool Singleton => true;
-    public OsWindow Create(ShellHost shell, VNode document) => new TaskManagerWindow();
-}
-
-/// <summary>Панель управления.</summary>
-public sealed class ControlPanelProgram : IProgram
-{
-    public string Id => "controlpanel";
-    public string NameKey => "start.control_panel";
-    public IconId Icon => IconId.ControlPanel;
-    public OsWindow Create(ShellHost shell, VNode document) => new ControlPanelWindow();
-}
-
 /// <summary>Свойства: Звуки и аудиоустройства.</summary>
 public sealed class SoundProgram : IProgram
 {

@@ -159,6 +159,21 @@ public static class L
         ? $"{Days[(int)d.DayOfWeek]}, {d.Day} {Months[d.Month - 1]} {d.Year} г."
         : $"{Days[(int)d.DayOfWeek]}, {Months[d.Month - 1]} {d.Day}, {d.Year}";
 
+    /// <summary>«июнь 2010» — the heading over a month grid, which needs the
+    /// month named on its own rather than inside a date.</summary>
+    public static string MonthAndYear(DateTime d)
+    {
+        string month = Months[d.Month - 1];
+        if (_current != Lang.Ru) return month + " " + d.Year;
+
+        // The table holds the genitive («июня»), which is right inside a date
+        // and wrong on its own; this is the short way back to the nominative.
+        month = month.EndsWith("я", StringComparison.Ordinal) ? month[..^1] + "ь"
+              : month.EndsWith("а", StringComparison.Ordinal) ? month[..^1]
+              : month;
+        return char.ToUpper(month[0]) + month[1..] + " " + d.Year;
+    }
+
     public static string ShortDate(DateTime d) => _current == Lang.Ru
         ? d.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture)
         : d.ToString("MM/dd/yyyy", CultureInfo.InvariantCulture);

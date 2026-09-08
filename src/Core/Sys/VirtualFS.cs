@@ -92,6 +92,11 @@ public sealed class VNode
     /// notes that "the most important folder in my system" will not go.</summary>
     public bool Protected;
 
+    /// <summary>True for a node the user made rather than one the system seeded.
+    /// Only these are written to the journal that survives a restart — the
+    /// seeded ones come back on their own.</summary>
+    public bool UserCreated;
+
     public bool IsHosted => HostPath != null;
 
     public bool IsContainer => Kind is NodeKind.Folder or NodeKind.Drive or NodeKind.DvdDrive
@@ -116,6 +121,28 @@ public sealed class VNode
             return p.EndsWith("\\") ? p + Name : p + "\\" + Name;
         }
     }
+
+    /// <summary>The name a node is written down by. A node whose name comes out
+    /// of the catalogue is written by its key instead, because the journal may
+    /// well be read back in the other language and still has to find the same
+    /// folder.</summary>
+    public string StableName => NameKey ?? _name;
+
+    public string StablePath
+    {
+        get
+        {
+            if (Parent == null) return StableName;
+            string p = Parent.StablePath;
+            return p.EndsWith("\\") ? p + StableName : p + "\\" + StableName;
+        }
+    }
+
+    /// <summary>True when this node answers to a name, whichever of its two
+    /// names is being used.</summary>
+    public bool Named(string name)
+        => string.Equals(Name, name, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(StableName, name, StringComparison.OrdinalIgnoreCase);
 
     public VNode Add(VNode child)
     {
@@ -463,6 +490,55 @@ public sealed class VirtualFS
     }
 
     /// <summary>Creates a uniquely named child, the way the New submenu does.</summary>
+    // ---- what the user did to the tree -------------------------------------
+    //
+    // The tree is rebuilt from code on every start, so the only things worth
+    // remembering are the differences: what was removed from the seeded set and
+    // what was renamed in it. Everything the user made carries its own flag and
+    // is found by walking. <see cref="UserFiles"/> reads all three.
+
+    /// <summary>Where every path starts. There is one tree and «Мой компьютер»
+    /// is the top of it.</summary>
+    public VNode Root => MyComputer;
+
+    readonly List<string> _deleted = new();
+    readonly List<(string from, string to)> _renamed = new();
+
+    public IReadOnlyList<string> DeletedNodes => _deleted;
+    public IReadOnlyList<(string from, string to)> RenamedNodes => _renamed;
+
+    public void NoteDeleted(string path)
+    {
+        if (!string.IsNullOrEmpty(path) && !_deleted.Contains(path)) _deleted.Add(path);
+    }
+
+    public void NoteRenamed(string from, string to)
+    {
+        if (string.IsNullOrEmpty(from) || string.IsNullOrEmpty(to)) return;
+        _renamed.RemoveAll(r => r.from == from);
+        _renamed.Add((from, to));
+    }
+
+    /// <summary>Walks a backslash-separated path from the root. Used to put the
+    /// journal back where it came from.</summary>
+    public VNode FindByPath(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return null;
+
+        var node = Root;
+        foreach (string part in path.Split('\\', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (node == null) return null;
+
+            // The root prints itself as the first segment of every path.
+            if (node == Root && Root.Named(part)) continue;
+
+            HostMount.Populate(node);
+            node = node.Children.FirstOrDefault(ch => ch.Named(part));
+        }
+        return node;
+    }
+
     public VNode CreateChild(VNode parent, string baseName, NodeKind kind, IconId icon)
     {
         string name = baseName;
@@ -478,6 +554,10 @@ public sealed class VirtualFS
             Modified = DateTime.Now,
             Text = kind == NodeKind.TextFile ? "" : null,
             Launch = kind == NodeKind.TextFile ? "notepad" : null,
+
+            // Made by somebody rather than seeded, so it is written down and
+            // comes back after a restart.
+            UserCreated = true,
         };
         parent.Add(node);
         return node;
@@ -536,6 +616,10 @@ public sealed class VirtualFS
 
         // A translated name cannot survive being edited: once the user has typed
         // one, the node stops following the interface language.
+        // A rename of a seeded node has to be written down; one the user made
+        // is written down anyway, under its new name.
+        if (!node.UserCreated && node.Mount == null) NoteRenamed(node.StablePath, newName);
+
         node.NameKey = null;
         node.Name = newName;
         node.Modified = DateTime.Now;
@@ -617,6 +701,10 @@ public sealed class VirtualFS
     {
         if (node?.Parent == null || node.Protected) return;
         if (NeedsForce(node) && !permanent) return;
+
+        // A seeded node would come back on the next start unless the journal
+        // says it went; one the user made simply stops being written down.
+        if (!node.UserCreated && node.Mount == null) NoteDeleted(node.StablePath);
 
         node.Parent.Children.Remove(node);
 

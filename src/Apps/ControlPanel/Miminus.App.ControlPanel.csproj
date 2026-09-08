@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>Miminus.Apps</RootNamespace>
-    <AssemblyName>Miminus.App.Update</AssemblyName>
+    <AssemblyName>Miminus.App.ControlPanel</AssemblyName>
     <LangVersion>latest</LangVersion>
     <NoWarn>CA1416</NoWarn>
   </PropertyGroup>

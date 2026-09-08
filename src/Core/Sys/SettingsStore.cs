@@ -41,7 +41,10 @@ public static class SettingsStore
         {
             var s = shell.Settings;
 
+            // The accent is not here: it is a registry value, and the theme is
+            // built out of whatever the registry was carrying when it loaded.
             if (Enum.TryParse(Get(values, "theme"), out ThemeId theme)) shell.SetTheme(theme, fonts);
+            else shell.SetTheme(shell.ThemeId, fonts);
             if (Enum.TryParse(Get(values, "wallpaper"), out WallpaperId paper)) shell.SetWallpaper(paper);
             if (Enum.TryParse(Get(values, "language"), out Lang lang)) L.Current = lang;
             if (Enum.TryParse(Get(values, "smoothing"), out FontSmoothing smoothing)) s.Smoothing = smoothing;
@@ -58,17 +61,54 @@ public static class SettingsStore
             s.MenuFade = Flag(values, "menu_fade", s.MenuFade);
             s.MenuShadows = Flag(values, "menu_shadows", s.MenuShadows);
             s.LargeIcons = Flag(values, "large_icons", s.LargeIcons);
+            s.DesktopIcons = (int)Math.Clamp(Number(values, "desktop_icons", s.DesktopIcons), 0, 2);
+            s.TileSizeStep = (int)Math.Clamp(Number(values, "tile_size", s.TileSizeStep), 0, 2);
             s.ShowWindowContentsWhileDragging =
                 Flag(values, "drag_contents", s.ShowWindowContentsWhileDragging);
             s.HideAccessKeys = Flag(values, "hide_access_keys", s.HideAccessKeys);
 
+            if (Enum.TryParse(Get(values, "taskbar_edge"), out TaskbarEdge edge))
+                s.TaskbarEdge = edge;
+            s.TaskbarSize = (int)Math.Clamp(Number(values, "taskbar_size", s.TaskbarSize), 0, 2);
             s.LockTaskbar = Flag(values, "taskbar_locked", s.LockTaskbar);
             s.AutoHideTaskbar = Flag(values, "taskbar_autohide", s.AutoHideTaskbar);
             s.TaskbarOnTop = Flag(values, "taskbar_on_top", s.TaskbarOnTop);
             s.GroupSimilar = Flag(values, "taskbar_group", s.GroupSimilar);
             s.ShowQuickLaunch = Flag(values, "quick_launch", s.ShowQuickLaunch);
+
+            // The pinned programs, in the order they sit in on the bar. An
+            // empty value means the bar was emptied on purpose, which is a
+            // thing a user is allowed to do — the key being missing is what
+            // leaves the defaults alone.
+            if (Get(values, "taskbar_pinned") is { } pinned)
+                shell.Taskbar.SetPinned(pinned.Split(',', StringSplitOptions.RemoveEmptyEntries));
             s.ShowClock = Flag(values, "show_clock", s.ShowClock);
             s.HideInactiveIcons = Flag(values, "hide_tray_icons", s.HideInactiveIcons);
+
+            // Which icons in particular, once they have been moved one by one.
+            if (Get(values, "tray_hidden") is { } tucked)
+            {
+                s.HiddenTrayIcons.Clear();
+                foreach (string name in tucked.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                    s.HiddenTrayIcons.Add(name.Trim());
+            }
+
+            s.UseStartScreen = Flag(values, "start_screen", s.UseStartScreen);
+            s.HotCorners = Flag(values, "hot_corners", s.HotCorners);
+            s.ShowLockScreen = Flag(values, "lock_screen", s.ShowLockScreen);
+            s.Brightness = Math.Clamp(Number(values, "brightness", s.Brightness), 0.35f, 1f);
+
+            s.CursorScale = Math.Clamp(Number(values, "cursor_scale", s.CursorScale), 1f, 3f);
+            s.Magnifier = Flag(values, "magnifier", s.Magnifier);
+            s.MagnifierZoom = Math.Clamp(Number(values, "magnifier_zoom", s.MagnifierZoom), 1.5f, 6f);
+            s.OnScreenKeyboard = Flag(values, "osk", s.OnScreenKeyboard);
+            s.Narrator = Flag(values, "narrator", s.Narrator);
+            s.Animations = Flag(values, "animations", s.Animations);
+
+            s.PowerPlan = (int)Number(values, "power_plan", s.PowerPlan);
+            s.DisplayOffMinutes = (int)Number(values, "display_off", s.DisplayOffMinutes);
+            s.SleepMinutes = (int)Number(values, "sleep_after", s.SleepMinutes);
+            s.PowerButtonAction = (int)Number(values, "power_button", s.PowerButtonAction);
         }
         catch
         {
@@ -134,16 +174,42 @@ public static class SettingsStore
             "menu_fade        = " + Yes(s.MenuFade),
             "menu_shadows     = " + Yes(s.MenuShadows),
             "large_icons      = " + Yes(s.LargeIcons),
+            "desktop_icons    = " + s.DesktopIcons,
+            "tile_size        = " + s.TileSizeStep,
             "drag_contents    = " + Yes(s.ShowWindowContentsWhileDragging),
             "hide_access_keys = " + Yes(s.HideAccessKeys),
             "",
+            "taskbar_edge     = " + s.TaskbarEdge,
+            "taskbar_size     = " + s.TaskbarSize,
             "taskbar_locked   = " + Yes(s.LockTaskbar),
             "taskbar_autohide = " + Yes(s.AutoHideTaskbar),
             "taskbar_on_top   = " + Yes(s.TaskbarOnTop),
             "taskbar_group    = " + Yes(s.GroupSimilar),
             "quick_launch     = " + Yes(s.ShowQuickLaunch),
+            "taskbar_pinned   = " + string.Join(",", shell.Taskbar.Pinned),
             "show_clock       = " + Yes(s.ShowClock),
             "hide_tray_icons  = " + Yes(s.HideInactiveIcons),
+            "tray_hidden      = " + string.Join(",", s.HiddenTrayIcons),
+            "",
+            "start_screen     = " + Yes(s.UseStartScreen),
+            "hot_corners      = " + Yes(s.HotCorners),
+            "lock_screen      = " + Yes(s.ShowLockScreen),
+            "brightness       = " + s.Brightness.ToString("0.##",
+                System.Globalization.CultureInfo.InvariantCulture),
+            "",
+            "cursor_scale     = " + s.CursorScale.ToString("0.##",
+                System.Globalization.CultureInfo.InvariantCulture),
+            "magnifier        = " + Yes(s.Magnifier),
+            "magnifier_zoom   = " + s.MagnifierZoom.ToString("0.##",
+                System.Globalization.CultureInfo.InvariantCulture),
+            "osk              = " + Yes(s.OnScreenKeyboard),
+            "narrator         = " + Yes(s.Narrator),
+            "animations       = " + Yes(s.Animations),
+            "",
+            "power_plan       = " + s.PowerPlan,
+            "display_off      = " + s.DisplayOffMinutes,
+            "sleep_after      = " + s.SleepMinutes,
+            "power_button     = " + s.PowerButtonAction,
         };
         return string.Join("\n", lines) + "\n";
     }

@@ -53,7 +53,7 @@ public sealed class UpdateService
     public const string ManifestFile = "latest.txt";
 
     /// <summary>The version this build reports as installed.</summary>
-    public const string InstalledVersion = "7.3";
+    public const string InstalledVersion = "8.0";
 
     public static string RepositoryUrl => "https://github.com/" + Repository;
 

@@ -9,12 +9,20 @@ using Miminus.UI;
 
 namespace Miminus.Apps;
 
-/// <summary>Таблица Миминус — the spreadsheet part 1 spends a minute in, loaded
-/// with the same investment exercise: cash flows, NPV, payback period and MIRR.
+/// <summary>EXCE1 — the spreadsheet part 1 spends a minute in, loaded with the
+/// same investment exercise: cash flows, NPV, payback period and MIRR.
 ///
 /// Formulas are real. A small recursive-descent parser handles arithmetic, cell
 /// and range references, and a set of functions, with cycle detection so a
-/// self-referencing cell reports #ЦИКЛ! instead of hanging.</summary>
+/// self-referencing cell reports #ЦИКЛ! instead of hanging.
+///
+/// The face is the one Office wore in 2013, which is the flattest that suite
+/// ever looked: the window chrome is a single block of the program's own green,
+/// the menu bar is gone and the tabs are set in small capitals with ФАЙЛ as a
+/// solid green rectangle at the head of them, the ribbon is white with its group
+/// names in grey underneath, and nothing anywhere has a bevel on it. The grid
+/// went with it — hairline rules, flat headers, and the selection drawn as a
+/// green box with a green square at its corner.</summary>
 public sealed class SpreadsheetWindow : OsWindow
 {
     const int Cols = 26, Rows = 200;
@@ -47,18 +55,28 @@ public sealed class SpreadsheetWindow : OsWindow
     public override string Title
         => (_file?.Name ?? L.T("sheet.book1")) + " - " + L.T("sheet.miminus_sheet");
 
-    public override float MinWidth => 520;
-    public override float MinHeight => 340;
+    public override float MinWidth => 560;
+    public override float MinHeight => 380;
+
+    /// <summary>The green Office painted the spreadsheet's whole window in.</summary>
+    static readonly Color Green = Color.Rgb(0x217346);
+    static readonly Color GreenDark = Color.Rgb(0x1A5C38);
+    static readonly Color GreenPale = Color.Rgb(0xE6F2EC);
+    static readonly Color Rule = Color.Rgb(0xD4D4D4);
+    static readonly Color HeaderFace = Color.Rgb(0xF3F3F3);
+    static readonly Color Ink = Color.Rgb(0x2B2B2B);
+    static readonly Color InkDim = Color.Rgb(0x7A7A7A);
+
+    public override Color? CaptionTint => Green;
 
     public SpreadsheetWindow(VNode file)
     {
         _file = file;
         Icon = IconId.Spreadsheet;
-        Bounds = new Rect(0, 0, 900, 600);
+        Bounds = new Rect(0, 0, 940, 620);
         for (int i = 0; i < Cols; i++) _colWidth[i] = 74;
         _colWidth[0] = 150;
         LoadSample();
-        BuildMenu();
     }
 
     static int Key(int col, int row) => row * Cols + col;
@@ -431,171 +449,363 @@ public sealed class SpreadsheetWindow : OsWindow
         }
     }
 
-    // ---- menu ------------------------------------------------------------
+    // ---- ФАЙЛ ------------------------------------------------------------
+    //
+    // 2013 replaced the menu bar with one green rectangle at the head of the
+    // tabs; pressing it turned the whole window into a page of commands. There
+    // is not enough in this spreadsheet to fill a page, so it drops a list
+    // instead — the same commands, in the place they moved to.
 
-    void BuildMenu()
+    List<MenuItem> FileMenu(UiContext c) => new()
     {
-        Menu = new MenuBar();
-        Menu.Add(L.T("sheet.file"), () => new List<MenuItem>
-        {
-            MenuItem.Of(L.T("sheet.new"), () => { _cells.Clear(); _cache.Clear(); }),
-            MenuItem.Of(L.T("sheet.save"), () =>
-            {
-                if (_file != null) _file.Modified = Shell.Now;
-                _ctx.Sound(Sfx.Click, 0.6f);
-            }, shortcut: "Ctrl+S"),
-            MenuItem.Sep(),
-            MenuItem.Of(L.T("sheet.exit"), Close),
-        });
-        Menu.Add(L.T("sheet.edit"), () => new List<MenuItem>
-        {
-            MenuItem.Of(L.T("sheet.copy"), () => Clipboard.SetText(Display(_curCol, _curRow)), shortcut: "Ctrl+C"),
-            MenuItem.Of(L.T("sheet.paste"), () =>
-            {
-                Set(_curCol, _curRow, Clipboard.GetText().Split('\n')[0].Trim());
-            }, shortcut: "Ctrl+V"),
-            MenuItem.Sep(),
-            MenuItem.Of(L.T("sheet.clear"), () => { _cells.Remove(Key(_curCol, _curRow)); _cache.Clear(); }, shortcut: "Del"),
-        });
-        Menu.Add(L.T("sheet.f_ormat"), () => new List<MenuItem>
-        {
-            MenuItem.Check(L.T("sheet.bold"), At(_curCol, _curRow)?.Bold ?? false, () =>
-            {
-                var c = At(_curCol, _curRow, true);
-                c.Bold = !c.Bold;
-            }),
-            MenuItem.Sep(),
-            MenuItem.Of(L.T("sheet.align_left"), () => At(_curCol, _curRow, true).Align = 1),
-            MenuItem.Of(L.T("sheet.center"), () => At(_curCol, _curRow, true).Align = 2),
-            MenuItem.Of(L.T("sheet.align_right"), () => At(_curCol, _curRow, true).Align = 3),
-        });
-        Menu.Add(L.T("sheet.insert"), () => new List<MenuItem>
-        {
-            MenuItem.Of(L.T("sheet.sum_of_range"), () =>
-            {
-                if (_selRow != _curRow || _selCol != _curCol)
-                {
-                    int c0 = Math.Min(_curCol, _selCol), c1 = Math.Max(_curCol, _selCol);
-                    int r0 = Math.Min(_curRow, _selRow), r1 = Math.Max(_curRow, _selRow);
-                    Set(c1, r1 + 1, $"=СУММ({ColName(c0)}{r0 + 1}:{ColName(c1)}{r1 + 1})");
-                }
-            }),
-        });
-        Menu.Add(L.T("sheet.help"), () => new List<MenuItem>
-        {
-            MenuItem.Of(L.T("sheet.about"), () =>
-                Shell.MessageBox(_ctx, L.T("sheet.miminus_sheet"), L.T("sheet.about_exce1"),
-                    MsgButtons.Ok, IconId.Spreadsheet, null, Sfx.Info), IconId.DlgInfo),
-            MenuItem.Of(L.T("sheet.functions"), () =>
-                Shell.MessageBox(_ctx, L.T("sheet.functions"),
-                    L.T("sheet.functions_help"),
-                    MsgButtons.Ok, IconId.DlgInfo, null, Sfx.Info), IconId.Help),
-        });
+        MenuItem.Of(L.T("sheet.new"), () => { _cells.Clear(); _cache.Clear(); },
+                    IconId.Spreadsheet),
+        MenuItem.Of(L.T("sheet.save"), () => Save(c), IconId.DriveHdd, "Ctrl+S"),
+        MenuItem.Sep(),
+        MenuItem.Of(L.T("sheet.about"), () =>
+            Shell.MessageBox(c, L.T("sheet.miminus_sheet"), L.T("sheet.about_exce1"),
+                MsgButtons.Ok, IconId.Spreadsheet, null, Sfx.Info), IconId.DlgInfo),
+        MenuItem.Of(L.T("sheet.functions"), () =>
+            Shell.MessageBox(c, L.T("sheet.functions"), L.T("sheet.functions_help"),
+                MsgButtons.Ok, IconId.DlgInfo, null, Sfx.Info), IconId.Help),
+        MenuItem.Sep(),
+        MenuItem.Of(L.T("sheet.exit"), Close),
+    };
+
+    void Save(UiContext c)
+    {
+        if (_file != null) _file.Modified = Shell.Now;
+        c.Sound(Sfx.Click, 0.6f);
+    }
+
+    void AutoSum()
+    {
+        int r0 = 0;
+        for (int r = _curRow - 1; r >= 0 && IsNumeric(_curCol, r); r--) r0 = r;
+        if (r0 < _curRow)
+            Set(_curCol, _curRow, $"=СУММ({ColName(_curCol)}{r0 + 1}:{ColName(_curCol)}{_curRow})");
+    }
+
+    void SumRangeBelow()
+    {
+        if (_selRow == _curRow && _selCol == _curCol) return;
+        int c0 = Math.Min(_curCol, _selCol), c1 = Math.Max(_curCol, _selCol);
+        int r0 = Math.Min(_curRow, _selRow), r1 = Math.Max(_curRow, _selRow);
+        Set(c1, r1 + 1, $"=СУММ({ColName(c0)}{r0 + 1}:{ColName(c1)}{r1 + 1})");
     }
 
     UiContext _ctx;
 
     // ---- rendering -------------------------------------------------------
 
+    /// <summary>Which ribbon tab is out, and whether the ribbon is rolled up.
+    /// ФАЙЛ is not a tab: it is a button that drops a list.</summary>
+    int _tab;
+    bool _ribbonUp;
+
     public override void DrawClient(UiContext c, Rect client)
     {
         _ctx = c;
-        c.R.FillRect(client, c.Theme.Face);
+        c.R.FillRect(client, Color.White);
 
         var area = client;
-        DrawToolbar(c, area.CutTop(28));
-        DrawFormulaBar(c, area.CutTop(24));
-        var status = area.CutBottom(20);
-        var tabs = area.CutBottom(20);
+        DrawTabStrip(c, area.CutTop(28));
+        if (!_ribbonUp) DrawRibbon(c, area.CutTop(84));
+        DrawFormulaBar(c, area.CutTop(26));
+
+        var status = area.CutBottom(22);
+        var tabs = area.CutBottom(24);
 
         DrawGrid(c, area);
         DrawSheetTabs(c, tabs);
-
-        string sel = $"{ColName(_curCol)}{_curRow + 1}";
-        int count = _cells.Count(kv => kv.Value.Raw.Length > 0);
-        W.StatusBar(c, status, L.T("sheet.ready"),
-                    L.F("sheet.cells_0", count),
-                    L.F("sheet.selected_0", sel));
+        DrawStatusBar(c, status);
     }
 
-    void DrawToolbar(UiContext c, Rect bar)
-    {
-        W.ToolbarBackground(c, bar);
-        float x = bar.X + 4;
+    // ---- the tab strip ----------------------------------------------------
 
-        void Tool(string id, IconId icon, string tip, Action click)
+    static readonly string[] TabKeys =
+    {
+        "sheet.tab_home", "sheet.tab_insert", "sheet.tab_formulas", "sheet.tab_view",
+    };
+
+    void DrawTabStrip(UiContext c, Rect bar)
+    {
+        c.R.FillRect(bar, Color.White);
+        c.R.FillRect(new Rect(bar.X, bar.Bottom - 1, bar.W, 1), Rule);
+
+        // ФАЙЛ: a solid block of the program's colour, which is the one thing
+        // everybody remembers about that ribbon.
+        string fileText = L.T("sheet.tab_file");
+        var file = new Rect(bar.X, bar.Y, c.F.Small.Measure(fileText) + 26, bar.H - 1);
+        bool fileHot = c.Hovering(file);
+        c.R.FillRect(file, fileHot ? GreenDark : Green);
+        c.F.Small.DrawCentered(c.R, fileText, file, Color.White);
+        if (c.Clicked(file))
+            Shell.Menus.Open(FileMenu(c), file.X, file.Bottom, this, c, 170);
+
+        float x = file.Right + 6;
+        for (int i = 0; i < TabKeys.Length; i++)
         {
-            var r = new Rect(x, bar.Y + 3, 24, bar.H - 6);
-            if (W.FlatButton(c, Id + id, r, null, true, icon)) click();
-            c.Tooltip(r, L.T(tip));
-            x += 26;
+            string label = L.T(TabKeys[i]);
+            var r = new Rect(x, bar.Y, c.F.Small.Measure(label) + 24, bar.H - 1);
+            bool sel = i == _tab;
+            bool hot = c.Hovering(r);
+
+            if (sel)
+            {
+                // The tab that is out is white with the page under it, joined
+                // by the gap it leaves in the rule.
+                c.R.FillRect(r, Color.White);
+                c.R.FillRect(new Rect(r.X, r.Y, 1, r.H), Rule);
+                c.R.FillRect(new Rect(r.Right - 1, r.Y, 1, r.H), Rule);
+                c.R.FillRect(new Rect(r.X, r.Y, r.W, 1), Rule);
+                c.R.FillRect(new Rect(r.X + 1, r.Bottom, r.W - 2, 1), Color.White);
+            }
+            else if (hot) c.R.FillRect(r, Color.Rgb(0xF2F2F2));
+
+            c.F.Small.DrawCentered(c.R, label, r, sel ? Ink : Green);
+
+            if (c.Clicked(r))
+            {
+                if (sel) _ribbonUp = !_ribbonUp;
+                else { _tab = i; _ribbonUp = false; }
+                c.SoundAt(Sfx.Tick, r, 0.3f);
+            }
+            if (c.DoubleClicked(r)) _ribbonUp = !_ribbonUp;
+
+            x = r.Right + 2;
         }
 
-        Tool(".new", IconId.Spreadsheet, "sheet.new", () => { _cells.Clear(); _cache.Clear(); });
-        Tool(".save", IconId.DriveHdd, "sheet.save", () => c.Sound(Sfx.Click, 0.6f));
-        W.Separator(c, x + 2, bar.Y + 4, bar.H - 8); x += 8;
+        // The account name in the corner, which 2013 put there and which here
+        // is the name the machine was registered to.
+        string who = Shell.UserName;
+        var whoR = new Rect(bar.Right - c.F.Small.Measure(who) - 12, bar.Y,
+                            c.F.Small.Measure(who) + 8, bar.H - 1);
+        if (whoR.X > x + 20)
+            c.F.Small.DrawCentered(c.R, who, whoR, InkDim);
+    }
 
-        // Bold / alignment toggles for the current cell.
+    // ---- the ribbon -------------------------------------------------------
+
+    void DrawRibbon(UiContext c, Rect ribbon)
+    {
+        c.R.FillRect(ribbon, Color.White);
+        c.R.FillRect(new Rect(ribbon.X, ribbon.Bottom - 1, ribbon.W, 1), Rule);
+
+        var area = ribbon.Deflate(6, 4, 6, 16);
+        switch (_tab)
+        {
+            case 1: DrawInsertTab(c, ribbon, area); break;
+            case 2: DrawFormulasTab(c, ribbon, area); break;
+            case 3: DrawViewTab(c, ribbon, area); break;
+            default: DrawHomeTab(c, ribbon, area); break;
+        }
+
+        // The chevron that rolls the ribbon away, in the corner it lived in.
+        var up = new Rect(ribbon.Right - 22, ribbon.Y + 4, 16, 16);
+        if (c.Hovering(up)) c.R.FillRect(up, Color.Rgb(0xF0F0F0));
+        W.Arrow(c, up, 0, InkDim, 3.4f);
+        c.Tooltip(up, L.T("sheet.collapse_ribbon"));
+        if (c.Clicked(up)) _ribbonUp = true;
+    }
+
+    /// <summary>«ГЛАВНАЯ»: the clipboard, the face of the text and where it
+    /// sits in the cell.</summary>
+    void DrawHomeTab(UiContext c, Rect ribbon, Rect area)
+    {
         var cell = At(_curCol, _curRow, true);
-        var bold = new Rect(x, bar.Y + 3, 24, bar.H - 6);
-        if (W.FlatButton(c, Id + ".bold", bold, null, true, IconId.None, cell.Bold)) cell.Bold = !cell.Bold;
-        c.F.UiBold.DrawCentered(c.R, "Ж", bold, c.Theme.Text);
-        x += 26;
 
+        var group = Group(c, ribbon, ref area, 158, "sheet.group_clipboard");
+        if (Big(c, group.CutLeft(72), "sheet.paste", IconId.TextFile))
+            Set(_curCol, _curRow, Clipboard.GetText().Split('\n')[0].Trim());
+        if (Big(c, group.CutLeft(84), "sheet.copy", IconId.ImageFile))
+            Clipboard.SetText(Display(_curCol, _curRow));
+
+        group = Group(c, ribbon, ref area, 116, "sheet.group_font");
+        if (Letter(c, group.CutLeft(30), "Ж", cell.Bold, true)) cell.Bold = !cell.Bold;
+        Letter(c, group.CutLeft(30), "К", false, false);
+        Letter(c, group.CutLeft(30), "Ч", false, false);
+
+        group = Group(c, ribbon, ref area, 116, "sheet.group_align");
         for (int i = 1; i <= 3; i++)
         {
-            var r = new Rect(x, bar.Y + 3, 24, bar.H - 6);
-            int align = i;
-            bool active = cell.Align == align;
-            if (W.FlatButton(c, Id + ".al" + i, r, null, true, IconId.None, active)) cell.Align = align;
-            for (int line = 0; line < 4; line++)
-            {
-                float lw = (line % 2 == 0) ? 12 : 8;
-                float lx = align == 1 ? r.X + 6 : align == 3 ? r.Right - 6 - lw : r.CenterX - lw * 0.5f;
-                c.R.FillRect(new Rect(lx, r.Y + 5 + line * 3, lw, 1.4f), c.Theme.Text);
-            }
-            x += 26;
+            var r = group.CutLeft(30);
+            if (AlignButton(c, r, i, cell.Align == i)) cell.Align = i;
         }
 
-        W.Separator(c, x + 2, bar.Y + 4, bar.H - 8); x += 8;
-        Tool(".sum", IconId.Star, "sheet.autosum", () =>
+        group = Group(c, ribbon, ref area, 76, "sheet.group_cells");
+        if (Big(c, group.CutLeft(70), "sheet.clear", IconId.RecycleBin))
         {
-            int r0 = 0;
-            for (int r = _curRow - 1; r >= 0 && IsNumeric(_curCol, r); r--) r0 = r;
-            if (r0 < _curRow)
-                Set(_curCol, _curRow, $"=СУММ({ColName(_curCol)}{r0 + 1}:{ColName(_curCol)}{_curRow})");
-        });
+            for (int col = Math.Min(_curCol, _selCol); col <= Math.Max(_curCol, _selCol); col++)
+                for (int row = Math.Min(_curRow, _selRow); row <= Math.Max(_curRow, _selRow); row++)
+                    _cells.Remove(Key(col, row));
+            _cache.Clear();
+        }
+
+        group = Group(c, ribbon, ref area, 84, "sheet.group_editing");
+        if (Big(c, group.CutLeft(78), "sheet.autosum", IconId.Star)) AutoSum();
     }
+
+    void DrawInsertTab(UiContext c, Rect ribbon, Rect area)
+    {
+        var group = Group(c, ribbon, ref area, 168, "sheet.group_functions");
+        if (Big(c, group.CutLeft(78), "sheet.autosum", IconId.Star)) AutoSum();
+        if (Big(c, group.CutLeft(84), "sheet.sum_of_range", IconId.Spreadsheet)) SumRangeBelow();
+    }
+
+    void DrawFormulasTab(UiContext c, Rect ribbon, Rect area)
+    {
+        var group = Group(c, ribbon, ref area, 168, "sheet.group_functions");
+        if (Big(c, group.CutLeft(78), "sheet.autosum", IconId.Star)) AutoSum();
+        if (Big(c, group.CutLeft(84), "sheet.functions", IconId.Help))
+            Shell.MessageBox(c, L.T("sheet.functions"), L.T("sheet.functions_help"),
+                             MsgButtons.Ok, IconId.DlgInfo, null, Sfx.Info);
+
+        // What the current cell is really made of, which is the one thing this
+        // tab can say that the others cannot.
+        group = Group(c, ribbon, ref area, MathF.Max(200, area.W), "sheet.group_current");
+        string raw = At(_curCol, _curRow)?.Raw ?? "";
+        c.F.Small.Draw(c.R, $"{ColName(_curCol)}{_curRow + 1}", group.X + 2, group.Y + 6, InkDim);
+        c.R.PushClip(group);
+        c.F.Ui.Draw(c.R, raw.Length > 0 ? raw : "—", group.X + 2, group.Y + 22, Ink);
+        c.R.PopClip();
+    }
+
+    void DrawViewTab(UiContext c, Rect ribbon, Rect area)
+    {
+        var group = Group(c, ribbon, ref area, 176, "sheet.group_show");
+        if (Big(c, group.CutLeft(84), "sheet.collapse_ribbon", IconId.Display)) _ribbonUp = true;
+        if (Big(c, group.CutLeft(84), "sheet.about", IconId.DlgInfo))
+            Shell.MessageBox(c, L.T("sheet.miminus_sheet"), L.T("sheet.about_exce1"),
+                             MsgButtons.Ok, IconId.Spreadsheet, null, Sfx.Info);
+    }
+
+    /// <summary>One ribbon group: the commands, then the group's name in grey
+    /// underneath and a hairline between it and the next.</summary>
+    Rect Group(UiContext c, Rect ribbon, ref Rect area, float width, string titleKey)
+    {
+        width = MathF.Min(width, MathF.Max(0, area.W));
+        var group = area.CutLeft(width);
+        area.CutLeft(6);
+
+        string title = L.T(titleKey);
+        c.F.Small.DrawCentered(c.R, title,
+            new Rect(group.X, ribbon.Bottom - 16, group.W, 14), InkDim);
+
+        if (area.W > 4)
+            c.R.FillRect(new Rect(group.Right + 2, ribbon.Y + 6, 1, ribbon.H - 24), Rule);
+
+        return group;
+    }
+
+    /// <summary>A ribbon command: the icon over its name, no border until the
+    /// pointer is on it.</summary>
+    bool Big(UiContext c, Rect r, string key, IconId icon, bool enabled = true)
+    {
+        bool hot = enabled && c.Hovering(r);
+        bool held = hot && c.In.IsDown(MouseButton.Left);
+        if (held) c.R.FillRect(r, Color.Rgb(0xD8E9E0));
+        else if (hot) c.R.FillRect(r, GreenPale);
+
+        Icons.Draw(c.R, icon, new Rect(r.CenterX - 12, r.Y + 2, 24, 24));
+
+        c.R.PushClip(r);
+        var lines = c.F.Small.Wrap(L.T(key), r.W - 2);
+        float y = r.Y + 28;
+        foreach (string line in lines.Take(2))
+        {
+            c.F.Small.DrawCentered(c.R, line, new Rect(r.X, y, r.W, c.F.Small.Height),
+                                   enabled ? Ink : InkDim);
+            y += c.F.Small.Height + 1;
+        }
+        c.R.PopClip();
+
+        bool clicked = enabled && c.Clicked(r);
+        if (clicked) c.SoundAt(Sfx.Click, r, 0.4f);
+        return clicked;
+    }
+
+    /// <summary>Ж, К and Ч — the three letters that stand for the three faces
+    /// in a Russian office program.</summary>
+    bool Letter(UiContext c, Rect r, string glyph, bool on, bool enabled)
+    {
+        var box = new Rect(r.X + 2, r.Y + 2, 26, 26);
+        bool hot = enabled && c.Hovering(box);
+
+        if (on) { c.R.FillRect(box, GreenPale); c.R.DrawRect(box, Green); }
+        else if (hot) c.R.FillRect(box, GreenPale);
+
+        var font = glyph == "Ж" ? c.F.UiBold : c.F.Ui;
+        font.DrawCentered(c.R, glyph, box, enabled ? Ink : InkDim);
+        if (glyph == "Ч")
+            c.R.FillRect(new Rect(box.CenterX - 5, box.CenterY + 7, 10, 1), enabled ? Ink : InkDim);
+
+        bool clicked = enabled && c.Clicked(box);
+        if (clicked) c.SoundAt(Sfx.Click, box, 0.4f);
+        return clicked;
+    }
+
+    bool AlignButton(UiContext c, Rect r, int align, bool on)
+    {
+        var box = new Rect(r.X + 2, r.Y + 2, 26, 26);
+        bool hot = c.Hovering(box);
+
+        if (on) { c.R.FillRect(box, GreenPale); c.R.DrawRect(box, Green); }
+        else if (hot) c.R.FillRect(box, GreenPale);
+
+        for (int line = 0; line < 4; line++)
+        {
+            float lw = line % 2 == 0 ? 14 : 9;
+            float lx = align == 1 ? box.X + 6 : align == 3 ? box.Right - 6 - lw
+                                                           : box.CenterX - lw * 0.5f;
+            c.R.FillRect(new Rect(lx, box.Y + 7 + line * 3.5f, lw, 1.4f), Ink);
+        }
+
+        bool clicked = c.Clicked(box);
+        if (clicked) c.SoundAt(Sfx.Click, box, 0.4f);
+        return clicked;
+    }
+
+    // ---- the formula bar --------------------------------------------------
 
     void DrawFormulaBar(UiContext c, Rect bar)
     {
-        var t = c.Theme;
-        c.R.FillRect(bar, t.Face);
+        c.R.FillRect(bar, Color.White);
+        c.R.FillRect(new Rect(bar.X, bar.Bottom - 1, bar.W, 1), Rule);
 
-        var nameBox = new Rect(bar.X + 2, bar.Y + 2, 80, bar.H - 4);
-        W.SunkenField(c, nameBox);
-        c.F.Ui.DrawCentered(c.R, $"{ColName(_curCol)}{_curRow + 1}", nameBox, t.Text);
+        var nameBox = new Rect(bar.X + 4, bar.Y + 2, 92, bar.H - 6);
+        c.R.FillRect(nameBox, Color.White);
+        c.R.DrawRect(nameBox, Rule);
+        c.F.Ui.DrawCentered(c.R, $"{ColName(_curCol)}{_curRow + 1}", nameBox, Ink);
+        W.Arrow(c, new Rect(nameBox.Right - 14, nameBox.Y, 12, nameBox.H), 2, InkDim, 3f);
 
-        var fxBox = new Rect(nameBox.Right + 6, bar.Y + 2, 20, bar.H - 4);
-        c.F.UiBold.DrawCentered(c.R, "fx", fxBox, Color.Rgb(0x1E5FA8));
+        var fx = new Rect(nameBox.Right + 6, bar.Y + 2, 24, bar.H - 6);
+        c.F.UiBold.DrawCentered(c.R, "fx", fx, Green);
+        c.Tooltip(fx, L.T("sheet.functions"));
+        if (c.Clicked(fx))
+            Shell.MessageBox(c, L.T("sheet.functions"), L.T("sheet.functions_help"),
+                             MsgButtons.Ok, IconId.DlgInfo, null, Sfx.Info);
 
-        var field = new Rect(fxBox.Right + 4, bar.Y + 2, bar.Right - fxBox.Right - 8, bar.H - 4);
-        W.SunkenField(c, field);
+        var field = new Rect(fx.Right + 4, bar.Y + 2, bar.Right - fx.Right - 10, bar.H - 6);
+        c.R.FillRect(field, Color.White);
+        c.R.DrawRect(field, _editing ? Green : Rule);
 
         string shown = _editing ? _editBuffer : (At(_curCol, _curRow)?.Raw ?? "");
         c.R.PushClip(field.Deflate(3, 0, 3, 0));
-        c.F.Ui.Draw(c.R, shown, field.X + 4, field.CenterY - c.F.Ui.Height * 0.5f, t.Text);
+        c.F.Ui.Draw(c.R, shown, field.X + 5, field.CenterY - c.F.Ui.Height * 0.5f, Ink);
         if (_editing && (c.Time % 1.06) < 0.53)
-            c.R.FillRect(new Rect(field.X + 4 + c.F.Ui.Measure(shown), field.Y + 3, 1.4f, field.H - 6), t.Text);
+            c.R.FillRect(new Rect(field.X + 5 + c.F.Ui.Measure(shown), field.Y + 4, 1.4f,
+                                  field.H - 8), Ink);
         c.R.PopClip();
 
         if (c.Hovering(field)) c.Cursor = CursorShape.Text;
         if (c.Clicked(field)) BeginEdit(keepExisting: true);
     }
 
+    // ---- the grid ---------------------------------------------------------
+
     void DrawGrid(UiContext c, Rect area)
     {
-        var t = c.Theme;
         c.R.FillRect(area, Color.White);
 
         var corner = new Rect(area.X, area.Y, HeaderW, HeaderH);
@@ -603,7 +813,6 @@ public sealed class SpreadsheetWindow : OsWindow
         var rowHead = new Rect(area.X, area.Y + HeaderH, HeaderW, area.H - HeaderH - W.ScrollBarSize);
         var cellsArea = new Rect(colHead.X, rowHead.Y, colHead.W, rowHead.H);
 
-        // Total content extents for the scrollbars.
         float totalW = 0;
         for (int i = 0; i < Cols; i++) totalW += _colWidth[i];
         float totalH = Rows * RowHeight;
@@ -617,14 +826,14 @@ public sealed class SpreadsheetWindow : OsWindow
 
         if (c.Hovering(cellsArea) && c.In.WheelDelta != 0)
         {
-            _scrollY = Math.Clamp(_scrollY - c.In.WheelDelta * RowHeight * 3, 0, MathF.Max(0, totalH - cellsArea.H));
+            _scrollY = Math.Clamp(_scrollY - c.In.WheelDelta * RowHeight * 3, 0,
+                                  MathF.Max(0, totalH - cellsArea.H));
             c.MouseHandled = true;
         }
 
         int firstRow = (int)(_scrollY / RowHeight);
         int lastRow = Math.Min(Rows - 1, firstRow + (int)(cellsArea.H / RowHeight) + 1);
 
-        // Which column does x fall in?
         int firstCol = 0;
         float acc = 0;
         while (firstCol < Cols - 1 && acc + _colWidth[firstCol] < _scrollX) { acc += _colWidth[firstCol]; firstCol++; }
@@ -647,10 +856,11 @@ public sealed class SpreadsheetWindow : OsWindow
                 bool inSel = col >= selC0 && col <= selC1 && row >= selR0 && row <= selR1;
                 bool isCur = col == _curCol && row == _curRow;
 
-                if (inSel && !isCur) c.R.FillRect(r, Color.Rgba(0x316AC5, 40));
+                if (inSel && !isCur) c.R.FillRect(r, Color.Rgba(0x217346, 26));
 
-                c.R.FillRect(new Rect(r.X, r.Bottom - 1, r.W, 1), Color.Rgb(0xD4D4D4));
-                c.R.FillRect(new Rect(r.Right - 1, r.Y, 1, r.H), Color.Rgb(0xD4D4D4));
+                // Hairlines, which is all a 2013 grid was.
+                c.R.FillRect(new Rect(r.X, r.Bottom - 1, r.W, 1), Rule);
+                c.R.FillRect(new Rect(r.Right - 1, r.Y, 1, r.H), Rule);
 
                 string text = Display(col, row);
                 if (text.Length > 0)
@@ -661,12 +871,9 @@ public sealed class SpreadsheetWindow : OsWindow
                     int align = cell?.Align ?? 0;
                     if (align == 0) align = numeric ? 3 : 1;
 
-                    // Numbers must fit their column: drop decimals, then fall back
-                    // to Excel's ##### rather than spilling over the neighbour.
                     if (numeric && !text.StartsWith('#'))
                         text = FitNumber(text, font, w - 6);
 
-                    // Text overflows into adjacent empty cells, as a spreadsheet does.
                     Rect clip = new(r.X + 1, r.Y, r.W - 3, r.H);
                     float tw = font.Measure(text);
                     if (!numeric && tw > r.W - 6)
@@ -699,7 +906,7 @@ public sealed class SpreadsheetWindow : OsWindow
                         2 => r.CenterX - tw * 0.5f,
                         _ => r.X + 3,
                     };
-                    Color ink = text.StartsWith('#') ? Color.Rgb(0xC00000) : Color.Black;
+                    Color ink = text.StartsWith('#') ? Color.Rgb(0xC00000) : Ink;
 
                     c.R.PushClip(clip.Intersect(cellsArea));
                     font.Draw(c.R, text, tx, r.Y + (RowHeight - font.Height) * 0.5f, ink);
@@ -708,20 +915,20 @@ public sealed class SpreadsheetWindow : OsWindow
 
                 if (isCur && !_editing)
                 {
-                    c.R.DrawRect(r, Color.Rgb(0x1E5FA8), 2);
-                    // Fill handle in the bottom-right corner.
-                    c.R.FillRect(new Rect(r.Right - 3, r.Bottom - 3, 5, 5), Color.Rgb(0x1E5FA8));
+                    c.R.DrawRect(r, Green, 2);
+                    // The fill handle, which 2013 drew as a small green square.
+                    c.R.FillRect(new Rect(r.Right - 3, r.Bottom - 3, 5, 5), Green);
                 }
 
                 if (isCur && _editing)
                 {
                     c.R.FillRect(r, Color.White);
-                    c.R.DrawRect(r, Color.Rgb(0x1E5FA8), 2);
+                    c.R.DrawRect(r, Green, 2);
                     c.R.PushClip(r.Deflate(2));
-                    c.F.Ui.Draw(c.R, _editBuffer, r.X + 3, r.Y + (RowHeight - c.F.Ui.Height) * 0.5f, Color.Black);
+                    c.F.Ui.Draw(c.R, _editBuffer, r.X + 3, r.Y + (RowHeight - c.F.Ui.Height) * 0.5f, Ink);
                     if ((c.Time % 1.06) < 0.53)
-                        c.R.FillRect(new Rect(r.X + 3 + c.F.Ui.Measure(_editBuffer), r.Y + 3, 1.4f, RowHeight - 6),
-                                     Color.Black);
+                        c.R.FillRect(new Rect(r.X + 3 + c.F.Ui.Measure(_editBuffer), r.Y + 3,
+                                              1.4f, RowHeight - 6), Ink);
                     c.R.PopClip();
                 }
 
@@ -744,8 +951,12 @@ public sealed class SpreadsheetWindow : OsWindow
         c.R.PopClip();
 
         // ---- headers -----------------------------------------------------
-        c.R.FillRectV(corner, Color.White, t.Face);
-        c.R.DrawRect(corner, Color.Rgb(0xA0A0A0));
+        c.R.FillRect(corner, HeaderFace);
+        c.R.FillRect(new Rect(corner.Right - 1, corner.Y, 1, corner.H), Rule);
+        c.R.FillRect(new Rect(corner.X, corner.Bottom - 1, corner.W, 1), Rule);
+        // The little triangle in the corner that selects the whole sheet.
+        c.R.FillTriangle(corner.Right - 4, corner.Bottom - 4, corner.Right - 4,
+                         corner.Bottom - 11, corner.Right - 11, corner.Bottom - 4, InkDim);
 
         c.R.PushClip(colHead);
         float hx = colHead.X + firstColX;
@@ -754,11 +965,12 @@ public sealed class SpreadsheetWindow : OsWindow
             float w = _colWidth[col];
             var r = new Rect(hx, colHead.Y, w, colHead.H);
             bool sel = col >= selC0 && col <= selC1;
-            c.R.FillRectV(r, sel ? Color.Rgb(0xC8D8F0) : Color.White, sel ? Color.Rgb(0xA8C0E0) : t.Face);
-            c.R.DrawRect(r, Color.Rgb(0xA0A0A0));
-            c.F.Ui.DrawCentered(c.R, ColName(col), r, t.Text);
 
-            // Column resize grip.
+            c.R.FillRect(r, sel ? GreenPale : HeaderFace);
+            c.R.FillRect(new Rect(r.Right - 1, r.Y, 1, r.H), Rule);
+            c.R.FillRect(new Rect(r.X, r.Bottom - 1, r.W, 1), sel ? Green : Rule);
+            c.F.Small.DrawCentered(c.R, ColName(col), r, sel ? Green : Ink);
+
             var grip = new Rect(r.Right - 3, r.Y, 6, r.H);
             if (c.Hovering(grip)) c.Cursor = CursorShape.SizeWE;
             if (c.Clicked(grip)) _resizingCol = col;
@@ -786,9 +998,12 @@ public sealed class SpreadsheetWindow : OsWindow
         {
             var r = new Rect(rowHead.X, rowHead.Y + row * RowHeight - _scrollY, rowHead.W, RowHeight);
             bool sel = row >= selR0 && row <= selR1;
-            c.R.FillRectH(r, sel ? Color.Rgb(0xC8D8F0) : Color.White, sel ? Color.Rgb(0xA8C0E0) : t.Face);
-            c.R.DrawRect(r, Color.Rgb(0xA0A0A0));
-            c.F.Ui.DrawCentered(c.R, (row + 1).ToString(), r, t.Text);
+
+            c.R.FillRect(r, sel ? GreenPale : HeaderFace);
+            c.R.FillRect(new Rect(r.X, r.Bottom - 1, r.W, 1), Rule);
+            c.R.FillRect(new Rect(r.Right - 1, r.Y, 1, r.H), sel ? Green : Rule);
+            c.F.Small.DrawCentered(c.R, (row + 1).ToString(), r, sel ? Green : Ink);
+
             if (c.Clicked(r)) { _curRow = row; _selRow = row; _curCol = 0; _selCol = Cols - 1; }
         }
         c.R.PopClip();
@@ -798,27 +1013,80 @@ public sealed class SpreadsheetWindow : OsWindow
 
     int _resizingCol = -1;
 
+    // ---- the sheet tabs and the status bar --------------------------------
+
     void DrawSheetTabs(UiContext c, Rect bar)
     {
-        var t = c.Theme;
-        c.R.FillRect(bar, t.Face);
-        string[] names =
+        c.R.FillRect(bar, Color.White);
+        c.R.FillRect(new Rect(bar.X, bar.Y, bar.W, 1), Rule);
+
+        string[] names = { L.T("sheet.sheet1"), L.T("sheet.sheet2"), L.T("sheet.sheet3") };
+
+        // The four arrows that walked the tabs, kept as two.
+        float x = bar.X + 4;
+        foreach (int dir in new[] { 3, 1 })
         {
-            L.T("sheet.sheet1"), L.T("sheet.sheet2"), L.T("sheet.sheet3"),
-        };
-        float x = bar.X + 20;
+            var a = new Rect(x, bar.Y + 2, 18, bar.H - 4);
+            if (c.Hovering(a)) c.R.FillRect(a, Color.Rgb(0xF0F0F0));
+            W.Arrow(c, a, dir, InkDim, 3.2f);
+            x = a.Right;
+        }
+        x += 4;
+
         for (int i = 0; i < names.Length; i++)
         {
-            float w = c.F.Ui.Measure(names[i]) + 20;
+            float w = c.F.Small.Measure(names[i]) + 24;
             var r = new Rect(x, bar.Y, w, bar.H);
             bool sel = i == _sheet;
-            c.R.FillRect(r, sel ? Color.White : t.FaceDark);
-            c.R.DrawRect(r, Color.Rgb(0xA0A0A0));
-            if (sel) c.R.FillRect(new Rect(r.X + 1, r.Y, r.W - 2, 2), Color.Rgb(0x1E5FA8));
-            c.F.Ui.DrawCentered(c.R, names[i], r, t.Text);
+            bool hot = c.Hovering(r);
+
+            if (sel)
+            {
+                c.R.FillRect(r, Color.White);
+                c.R.FillRect(new Rect(r.X, r.Y, r.W, 2), Green);
+            }
+            else if (hot) c.R.FillRect(r, Color.Rgb(0xF2F2F2));
+
+            c.F.Small.DrawCentered(c.R, names[i], r, sel ? Green : Ink);
             if (c.Clicked(r)) { _sheet = i; c.SoundAt(Sfx.Tick, r, 0.3f); }
-            x += w + 1;
+            x = r.Right + 1;
         }
+
+        // The plus that made a new sheet, which is the one control 2013 added.
+        var plus = new Rect(x + 4, bar.Y + 4, 16, bar.H - 8);
+        if (c.Hovering(plus)) c.R.FillRect(plus, Color.Rgb(0xF0F0F0));
+        c.R.FillRect(new Rect(plus.CenterX - 5, plus.CenterY - 0.75f, 10, 1.5f), InkDim);
+        c.R.FillRect(new Rect(plus.CenterX - 0.75f, plus.CenterY - 5, 1.5f, 10), InkDim);
+        c.Tooltip(plus, L.T("sheet.new_sheet"));
+        if (c.Clicked(plus))
+            Shell.MessageBox(c, L.T("sheet.miminus_sheet"), L.T("sheet.three_sheets_note"),
+                             MsgButtons.Ok, IconId.DlgInfo, null, Sfx.Info);
+    }
+
+    void DrawStatusBar(UiContext c, Rect bar)
+    {
+        c.R.FillRect(bar, Color.White);
+        c.R.FillRect(new Rect(bar.X, bar.Y, bar.W, 1), Rule);
+
+        c.F.Small.Draw(c.R, L.T("sheet.ready"), bar.X + 8,
+                       bar.CenterY - c.F.Small.Height * 0.5f, InkDim);
+
+        // The sum of what is selected, which is what that bar was for.
+        int c0 = Math.Min(_curCol, _selCol), c1 = Math.Max(_curCol, _selCol);
+        int r0 = Math.Min(_curRow, _selRow), r1 = Math.Max(_curRow, _selRow);
+
+        int count = 0;
+        double sum = 0;
+        for (int col = c0; col <= c1; col++)
+            for (int row = r0; row <= r1; row++)
+                if (IsNumeric(col, row)) { sum += Value(col, row); count++; }
+
+        string right = count > 1
+            ? L.F("sheet.sum_average", Fmt(sum), Fmt(sum / count), count)
+            : L.F("sheet.selected_0", $"{ColName(_curCol)}{_curRow + 1}");
+
+        c.F.Small.DrawRight(c.R, right, new Rect(bar.X, bar.CenterY - c.F.Small.Height * 0.5f,
+                                                 bar.W - 10, c.F.Small.Height), InkDim);
     }
 
     // ---- editing ---------------------------------------------------------

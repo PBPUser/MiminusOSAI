@@ -4,14 +4,25 @@ using Miminus.Sys;
 
 namespace Miminus.Apps;
 
-/// <summary>Свойства: Экран.</summary>
-public sealed class DisplayProgram : IProgram
+/// <summary>The five-tab property sheet, kept: «Дополнительно» on the
+/// personalisation window is this, and so is everything that asked for it
+/// before the two were separated.</summary>
+public sealed class DisplayPropertiesProgram : IProgram
 {
-    public string Id => "display";
+    public string Id => "displayprops";
     public string NameKey => "start.display_properties";
     public IconId Icon => IconId.Display;
     public bool Singleton => true;
     public OsWindow Create(ShellHost shell, VNode document) => new DisplayPropertiesWindow();
+}
+
+/// <summary>«Заставка» — the screen-saver tab, on its own.</summary>
+public sealed class ScreenSaverProgram : IProgram
+{
+    public string Id => "screensaver";
+    public string NameKey => "display.screen_saver";
+    public IconId Icon => IconId.Lock;
+    public OsWindow Create(ShellHost shell, VNode document) => new DisplayPropertiesWindow(2);
 }
 
 /// <summary>Оформление → Эффекты.</summary>

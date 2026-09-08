@@ -9,55 +9,138 @@
 # считается комментарием. Ключ с суффиксом .en используется, когда интерфейс
 # переключён на английский язык.
 
-version   = 7.3
-name      = МИМИНУС ОС 7.3
-name.en   = MIMINUS OS 7.3
-codename  = Наш ответ BOLGENOS, Service Pack 3
-codename.en = Our answer to BOLGENOS, Service Pack 3
-released  = 2026-09-07
-size      = 441 КБ
-size.en   = 441 KB
+version   = 8.0
+name      = МИМИНУС ОС 8
+name.en   = MIMINUS OS 8
+codename  = Наш ответ BOLGENOS, плитками
+codename.en = Our answer to BOLGENOS, in tiles
+released  = 2026-09-08
+size      = 632 КБ
+size.en   = 632 KB
 
 # Страница проекта, показываемая в центре обновления.
 url       = https://github.com/PBPUser/MiminusOSAI
 
 # Страница релиза с описанием и вложениями.
-download  = https://github.com/PBPUser/MiminusOSAI/releases/tag/v7.3
+download  = https://github.com/PBPUser/MiminusOSAI/releases/tag/v8.0
 
 # Собранный пакет из релиза: его центр обновления скачивает и ставит сам.
-# Контрольная сумма обязательна: без неё пакет будет отклонён.
-package   = https://github.com/PBPUser/MiminusOSAI/releases/download/v7.3/MiminusOS-7.3.zip
-sha256    = 2BD4C7ED63C675F35C7D75CDB5034ED845AED484C6EBD006A3F24C5119101524
+# Контрольная сумма обязательна: без неё пакет будет отклонён — и пакет с
+# суммой, которая не совпала, тоже. Строку ниже нужно заменить настоящей
+# суммой пакета в момент публикации релиза: до тех пор центр обновления
+# честно откажется ставить то, что скачал.
+package   = https://github.com/PBPUser/MiminusOSAI/releases/download/v8.0/MiminusOS-8.0.zip
+sha256    = 93E8A3721D2B21FD0C981CB60D0A702636412B959212DCB8811FC15118CABB2D
 
-notes     = Добавлено: при первом запуске система задаёт вопросы — язык, имя и оформление.
-Добавлено: экран входа встречает песней, темп которой меняется каждые пару тактов.
-Добавлено: настройки сохраняются в settings.txt и переживают обновление.
-Добавлено: перетаскивание файлов между рабочим столом и папками.
-Добавлено: регулятор громкости по щелчку на динамике в трее.
-Добавлено: своей программой считается любая библиотека в папке apps.
-Добавлено: синий экран с настоящими сведениями об исключении.
-Изменено: масштаб DPI растрирует шрифты заново, а не растягивает их.
-Изменено: папка Windows удаляется нажатием Ctrl — без Delete и без вопросов.
-Добавлено: переименование папок и файлов на месте (F2).
-Добавлено: свойства панели задач — закрепление, автоскрытие, группировка кнопок, быстрый запуск, часы.
-Добавлено: клавиша Windows и сочетания с ней.
-Добавлено: папка Windows удаляется с зажатым Ctrl, и система продолжает работать.
-Добавлено: после обновления система показывает презентацию «Что нового».
-Добавлено: произношение и склонение «Михаил Гревцов» во «Всё в одном».
-Изменено: библиотеки программ загружаются по требованию и выгружаются, когда не нужны.
-notes.en  = Added: on a first start the system asks for a language, a name and an appearance.
-Added: the logon screen has a song whose tempo changes every couple of bars.
-Added: settings are kept in settings.txt and survive an update.
-Added: dragging files between the desktop and folder windows.
-Added: a volume control on the tray speaker.
-Added: any library in the apps folder counts as a program.
-Added: a blue screen carrying the real exception details.
-Changed: the DPI scale rasterises fonts again rather than stretching them.
-Changed: the Windows folder goes on Ctrl alone — no Delete, no questions.
-Added: renaming folders and files in place (F2).
-Added: taskbar properties — locking, auto-hide, button grouping, quick launch, clock.
-Added: the Windows key and its combinations.
-Added: a Windows folder deletes with Ctrl held, and the system carries on.
-Added: after an update the system shows a “What is new” presentation.
-Added: pronunciation and declension of «Михаил Гревцов» in All-in-One.
-Changed: program libraries load on demand and unload when no longer needed.
+notes     = Добавлено: начальный экран — плитки во весь экран, живые плитки, «Все приложения», поиск с первой буквы и панель приложений.
+Добавлено: прежнее меню «Пуск» осталось; кнопка «Пуск» открывает то, что выбрано в свойствах панели задач, и каждое ведёт к другому.
+Добавлено: чудо-кнопки по правому краю — поиск, общий доступ, пуск, устройства и параметры, а выключение спрятано внутри «Параметров».
+Добавлено: активные углы экрана и переключатель открытых программ по левому краю.
+Добавлено: экран блокировки с большими часами; убирается клавишей, щелчком или перетаскиванием вверх.
+Добавлено: оформление «Миминус 8» — ни одного градиента и ни одного скруглённого угла, кнопка закрытия краснеет.
+Добавлено: обои «Миминус 8» — светлые и тёмные.
+Добавлено: программы во весь экран (F11) с полосой, выезжающей сверху.
+Добавлено: анимация окон — открытие, сворачивание, закрытие и разворот меню «Пуск».
+Добавлено: Snap — окно, поднесённое к краю экрана, занимает половину, а к верхнему — весь экран; то же с Win+стрелками.
+Добавлено: «Параметры компьютера» и «Магазин Миминус».
+Добавлено: «Погода», «Фотографии» и «Заметки» — во весь экран.
+Добавлено: «Дефрагментация диска» и «Таблица символов» — в прежнем стиле.
+Изменено: проводник получил ленту, адресную строку с цепочкой папок и белую область задач.
+Изменено: панель управления переписана по образцу семёрки — категории, ссылки и поиск.
+Изменено: диспетчер задач открывается коротким списком, а «Подробнее» разворачивает его в таблицу процессов с подсветкой нагрузки, страницу быстродействия и автозагрузку.
+Изменено: проигрыватель стал плоским: обводка вместо объёма, тонкая полоса перемотки.
+Изменено: экран загрузки — четыре плитки и кольцо из точек вместо бегущих блоков.
+Добавлено: калькулятор в оформлении семёрки и второй, во весь экран, в оформлении восьмёрки.
+Добавлено: часы в трее открывают календарь со стрелочным циферблатом, а языковой индикатор — список раскладок, как в восьмёрке.
+Изменено: paint получил ленту, палитру в две строки и строку состояния с масштабом.
+Изменено: боковая панель проводника стала деревом «Избранное / Библиотеки / Компьютер / Сеть», а внизу появилась панель подробностей.
+Изменено: панель задач стала суперпанелью семёрки — закреплённые программы и окна в одном ряду, значки без подписей, стопка за кнопкой с несколькими окнами, всплывающий просмотр и полоска «свернуть всё» справа.
+Изменено: первоначальная настройка переписана по образцу восьмёрки: один вопрос на экран, цвет акцента выбирается сразу и красит систему.
+Изменено: экран блокировки и экран входа — как в восьмёрке: часы над нарисованным городом, круглая аватарка и поле пароля со стрелкой.
+Добавлено: центр специальных возможностей — экранная лупа, диктор, экранная клавиатура, высокая контрастность, размер указателя и отключение анимации.
+Добавлено: электропитание — три схемы, которые действительно меняют частоту кадров и яркость, и два таймера, которые действительно гасят экран и блокируют машину.
+Добавлено: диспетчер устройств и редактор реестра.
+Добавлено: реестр в файле registry.txt; цвет оформления живёт в нём, и правка в regedit перекрашивает систему сразу.
+Добавлено: тема «Высокая контрастность».
+Изменено: значки классических программ — в стиле семёрки, значки полноэкранных — плоские, в стиле восьмёрки.
+Изменено: классические окна берут цвет из своей темы; фиксированный синий остался только у полноэкранных программ и оболочки восьмёрки.
+Изменено: крупные значки на рабочем столе по умолчанию.
+Изменено: свойства экрана разделены на «Персонализацию» и «Разрешение экрана», как в восьмёрке.
+Изменено: каждая программа живёт в собственной библиотеке — диспетчер задач, панель управления и все программы во весь экран отдельно.
+Изменено: центр обновления стал страницей панели управления и получил вторую половину в «Параметрах компьютера» — обе читают одну службу, так что проверка, начатая в одном месте, продолжается в другом.
+Изменено: в контекстном меню рабочего стола вместо «Свойств» теперь «Разрешение экрана» и «Персонализация» — по образцу семёрки и восьмёрки.
+Изменено: Фигефох и Орега перерисованы по-новому — вкладки переехали в заголовок окна, адрес стал скруглённым полем с замком, меню спряталось за одну кнопку, а экспресс-панель стала сеткой карточек.
+Изменено: редактор реестра теперь виден — он в меню «Пуск» среди служебных программ и в панели управления, и у него собственный значок.
+Добавлено: значки на панели задач можно перетаскивать, закреплять перетаскиванием с рабочего стола или из папки и откреплять через меню кнопки; порядок сохраняется в settings.txt и восстанавливается после перезапуска.
+Изменено: EXCE1 переоформлен по образцу офиса 2013 — зелёный заголовок окна, лента с вкладками капителью и вкладкой ФАЙЛ, плоская сетка и строка состояния с суммой и средним.
+Добавлено: панель задач можно перенести к любому краю экрана — перетаскиванием или через её свойства — и сделать маленькой, обычной или большой; и то и другое сохраняется.
+Добавлено: поддержка двух экранов — «расширить», «дублировать» или «только на 1», выбор основного, обмен сторонами и «Определить»; окна разворачиваются на своём экране, панель задач и значки живут на основном.
+Добавлено: магазин действительно устанавливает программы — пакет из папки store копируется в apps, реестр программ перечитывается, и программа сразу появляется в «Пуске»; «Удалить» возвращает её обратно.
+Добавлено: «Часы и таймер» — часы со стрелками, секундомер и таймер; не входят в систему и ставятся из магазина.
+Исправлено: сглаживание шрифтов — покрытие больше не умножалось на цвет дважды, поэтому мелкий текст стал чётким, а не серым.
+Изменено: у окон темы «Миминус 8» рамка стала волосяной линией цвета оформления, как в восьмёрке, а не полосой в три пикселя.
+Добавлено: плитки начального экрана выкладываются каскадом, страницы «Параметров компьютера» и карточки магазина въезжают сбоку.
+Добавлено: размер значков рабочего стола и плиток начального экрана выбирается и сохраняется.
+Добавлено: созданные папки и файлы переживают перезапуск — что сделал пользователь, записывается в files.txt и накладывается на дерево при следующем запуске.
+Изменено: переименование в проводнике стало настоящим полем ввода — каретка, выделение, Home/End/Delete, и у файла выделяется имя без расширения.
+Изменено: регулятор громкости перерисован по образцу семёрки, а скрытые значки трея открываются панелью, между которой и панелью задач их можно перетаскивать.
+Изменено: переключатель языка перерисован по образцу восьмёрки.
+Исправлено: блокнот принимает набор сразу — каретка стоит в документе, как только окно открылось, и возвращается туда при переключении на него, так что в антивирусе Гревцова можно писать, не щёлкнув по бумаге.
+Исправлено: диалог останавливает только ту программу, которая его вызвала, а не всю машину; «Выключить компьютер» по-прежнему останавливает всё.
+Исправлено: --open=scan снова запускает проверку.
+notes.en  = Added: a Start screen — full-screen tiles, live tiles, All apps, a search that starts on the first letter, and an app bar.
+Added: the old Start menu stayed; the Start button opens whichever is set in the taskbar properties, and each one leads to the other.
+Added: charms along the right edge — search, share, start, devices and settings, with shutting down hidden inside Settings.
+Added: hot corners, and a switcher of running programs down the left edge.
+Added: a lock screen with a large clock; a key, a click or a drag upwards gets rid of it.
+Added: the "Miminus 8" theme — not one gradient, not one rounded corner, and a close button that goes red.
+Added: "Miminus 8" wallpapers, light and dark.
+Added: programs full screen (F11), with a bar that drops out of the top edge.
+Added: window animations — opening, minimising, closing, and the Start menu unrolling.
+Added: Snap — a window carried to a side of the screen takes half of it and to the top takes all of it; the same on Win+arrows.
+Added: "PC settings" and "Miminus Store".
+Added: "Weather", "Photos" and "Notes", full screen.
+Added: "Disk Defragmenter" and "Character Map", in the older style.
+Changed: the folder window has a ribbon, a breadcrumb address bar and a white navigation pane.
+Changed: the Control Panel is rebuilt the way 7 did it — categories, links and a search box.
+Changed: the task manager opens as a short list, and "More details" opens it into a process table with the load washed in colour, a performance page and a start-up list.
+Changed: the player went flat: outlines instead of bevels, and a hairline seek bar.
+Changed: the loading screen — four tiles and a ring of dots instead of marching blocks.
+Added: a calculator wearing seven's keypad, and a second one wearing eight's, full screen.
+Added: the tray clock opens a calendar with an analogue face, and the language indicator opens the list of layouts, as in eight.
+Changed: Paint has a ribbon, a two-row palette and a status bar with the zoom on it.
+Changed: the folder window's side pane is now a tree — Favourites, Libraries, Computer, Network — with a details pane along the foot.
+Changed: the taskbar is seven's superbar — pinned programs and windows in one row, icons without labels, a stack behind a button with several windows, hover previews, and the show-desktop sliver at the end.
+Changed: setup is rebuilt the way eight did it: one question per screen, and the accent colour is chosen first and paints the system.
+Changed: the lock and logon screens are eight's — a clock over a drawn city, a round account picture, and a password box with an arrow.
+Added: an Ease of Access Centre — magnifier, narrator, on-screen keyboard, high contrast, pointer size and an animation switch.
+Added: Power Options — three plans that really change the frame cap and the brightness, and two timers that really blank the screen and lock the machine.
+Added: a Device Manager and a Registry Editor.
+Added: a registry, in registry.txt; the interface colour lives in it, and editing that value in regedit repaints the system at once.
+Added: the High Contrast theme.
+Changed: the icons for desktop programs are seven's, and the ones for full-screen programs are eight's — flat.
+Changed: classic windows take their colour from their theme; the one fixed blue is now only for the full-screen programs and the version 8 shell.
+Changed: large desktop icons by default.
+Changed: display properties are split into Personalisation and Screen Resolution, as in eight.
+Changed: every program lives in a library of its own — the task manager, the control panel and each of the full-screen ones separately.
+Changed: the update centre became a page of the Control Panel and grew a second half inside PC settings — both read one service, so a check started in one place carries on in the other.
+Changed: the desktop context menu ends in "Screen resolution" and "Personalisation" instead of "Properties", the way 7 and 8 ended it.
+Changed: Figefoch and Orega were redrawn: the tabs moved into the title bar, the address became a rounded pill with a padlock in it, the menu bar folded into one button, and the speed dial became a grid of cards.
+Changed: the registry editor is findable — it is in the Start menu among the system tools and in the Control Panel, and it has an icon of its own.
+Added: the taskbar icons can be dragged along the bar, pinned by dropping something onto it from the desktop or a folder window, and unpinned from the button's own menu; the order is kept in settings.txt and comes back after a restart.
+Changed: EXCE1 wears Office 2013 — a green window, a ribbon with small-caps tabs and a solid FILE block, a flat grid, and a status bar carrying the sum and the average.
+Added: the taskbar can be carried to any edge of the screen — by dragging it or from its properties — and made small, normal or large; both are remembered.
+Added: two displays — extend, duplicate or show only on 1, which one is primary, swapping sides, and Identify; a window maximises onto its own screen, and the taskbar and icons stay on the primary.
+Added: the store really installs programs — a package in store/ is copied into apps/, the registry rescans, and the program is in the Start menu at once; Uninstall puts it back.
+Added: "Clock and timer" — a clock with hands, a stopwatch and a countdown; not part of the system, installed from the store.
+Fixed: font antialiasing — coverage was being multiplied into the colour as well as the alpha, which made small text grey instead of sharp.
+Changed: windows under "Miminus 8" have a hairline border in the accent colour, as version 8 drew them, rather than a three-pixel slab.
+Added: the Start screen deals its tiles out, and PC settings pages and store cards arrive from the side.
+Added: the size of the desktop icons and of the Start screen's tiles is chosen and remembered.
+Added: folders and files the user makes survive a restart — what they did is written to files.txt and replayed over the tree on the next start.
+Changed: renaming in the folder window is a real text box — caret, selection, Home/End/Delete, and a file opens with its name selected and its extension left alone.
+Changed: the volume flyout is seven's, and the hidden tray icons open into a panel they can be dragged in and out of.
+Changed: the language switcher is version 8's.
+Fixed: Notepad takes typing at once — the caret is in the document the moment the window opens, and goes back there when it is brought forward, so the Grevtsov antivirus can be written in without clicking on its paper first.
+Fixed: a dialog stops the program that raised it, not the whole machine; "Turn off computer" still stops everything.
+Fixed: --open=scan starts the scan again.

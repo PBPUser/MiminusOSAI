@@ -8,60 +8,98 @@ using Miminus.UI;
 
 namespace Miminus.Apps;
 
-/// <summary>Калькулятор Плюс — the calculator opened in part 3, with the standard
-/// and scientific keypads plus the unit-conversion mode that gave "Plus" its name.</summary>
+/// <summary>Калькулятор Плюс — the calculator opened in part 3, wearing the face
+/// Windows 7 gave the thing.
+///
+/// The seven look is specific and worth reproducing exactly: a white display
+/// panel with the running expression in small grey type above the number, a
+/// memory row across the top of the keypad, and square buttons that are almost
+/// flat — a hairline border, the faintest of gradients, and a blue wash on
+/// hover rather than the orange one XP used. The equals key is the only
+/// coloured one. МС and MR are greyed out until there is something in memory,
+/// which is the detail that gives the whole keypad away as a seven keypad.
+///
+/// It wears that face under every theme, the same way the folder window keeps
+/// its ribbon: the calculator is the calculator whatever the desktop is doing.
+/// The arithmetic is in <see cref="CalcEngine"/>, shared with the flat
+/// full-screen calculator version 8 brought.</summary>
 public sealed class CalculatorWindow : OsWindow
 {
     enum Mode { Standard, Scientific, Conversion }
 
+    readonly CalcEngine _calc = new();
     Mode _mode = Mode.Standard;
 
-    string _entry = "0";
-    double _accumulator;
-    string _pendingOp;
-    bool _freshEntry = true;
-    double _memory;
-    string _statusOp = "";
-
-    // Conversion mode
-    int _category, _fromUnit, _toUnit;
+    // Conversion mode keeps its own number: it is not doing arithmetic.
+    int _category, _fromUnit = 0, _toUnit = 1;
     string _convInput = "1";
 
     public override string Title => L.T("calc.calculator_plus");
     public override float MinWidth => 260;
-    public override float MinHeight => 260;
+    public override float MinHeight => 300;
 
     public CalculatorWindow()
     {
         Icon = IconId.Calculator;
         Resizable = false;
         Maximizable = false;
-        Bounds = new Rect(0, 0, 300, 300);
+        Bounds = new Rect(0, 0, 268, 336);
         BuildMenu();
     }
+
+    // ---- the seven palette ---------------------------------------------------
+
+    static readonly Color PanelFace = Color.Rgb(0xF0F0F0);
+    static readonly Color DisplayBack = Color.Rgb(0xFFFFFF);
+    static readonly Color DisplayEdge = Color.Rgb(0xA0A0A0);
+
+    static readonly Color KeyTop = Color.Rgb(0xFDFDFD);
+    static readonly Color KeyBottom = Color.Rgb(0xE9E9E9);
+    static readonly Color KeyEdge = Color.Rgb(0xACACAC);
+
+    static readonly Color HotTop = Color.Rgb(0xEAF6FD);
+    static readonly Color HotBottom = Color.Rgb(0xC4E5F6);
+    static readonly Color HotEdge = Color.Rgb(0x3C7FB1);
+
+    static readonly Color HeldTop = Color.Rgb(0xC4E5F6);
+    static readonly Color HeldBottom = Color.Rgb(0x98D1EF);
+    static readonly Color HeldEdge = Color.Rgb(0x2C628B);
+
+    static readonly Color EqualsTop = Color.Rgb(0x5D9BE0);
+    static readonly Color EqualsBottom = Color.Rgb(0x2E6EB8);
+    static readonly Color EqualsEdge = Color.Rgb(0x26538C);
+
+    static readonly Color Ink = Color.Rgb(0x1A1A1A);
+    static readonly Color InkOperator = Color.Rgb(0x1E3E6E);
+    static readonly Color InkOff = Color.Rgb(0xA8A8A8);
 
     void BuildMenu()
     {
         Menu = new MenuBar();
-        Menu.Add(L.T("calc.edit"), () => new List<MenuItem>
-        {
-            MenuItem.Of(L.T("calc.copy"), () => Clipboard.SetText(_entry), shortcut: "Ctrl+C"),
-            MenuItem.Of(L.T("calc.paste"), () =>
-            {
-                if (double.TryParse(Clipboard.GetText().Trim(), NumberStyles.Any,
-                                    CultureInfo.InvariantCulture, out double v))
-                { _entry = Format(v); _freshEntry = true; }
-            }, shortcut: "Ctrl+V"),
-        });
 
         Menu.Add(L.T("calc.view"), () => new List<MenuItem>
         {
             new() { Text = L.T("calc.standard"), IsRadio = true, Checked = _mode == Mode.Standard,
-                    Click = () => SetMode(Mode.Standard) },
+                    Click = () => SetMode(Mode.Standard), Shortcut = "Alt+1" },
             new() { Text = L.T("calc.scientific"), IsRadio = true, Checked = _mode == Mode.Scientific,
-                    Click = () => SetMode(Mode.Scientific) },
+                    Click = () => SetMode(Mode.Scientific), Shortcut = "Alt+2" },
             new() { Text = L.T("calc.unit_conversion"), IsRadio = true,
-                    Checked = _mode == Mode.Conversion, Click = () => SetMode(Mode.Conversion) },
+                    Checked = _mode == Mode.Conversion, Click = () => SetMode(Mode.Conversion),
+                    Shortcut = "Alt+3" },
+            MenuItem.Sep(),
+            MenuItem.Of(L.T("calc.modern"), () => Shell.Launch(_ctx, "calculator8", null),
+                        IconId.Calculator),
+        });
+
+        Menu.Add(L.T("calc.edit"), () => new List<MenuItem>
+        {
+            MenuItem.Of(L.T("calc.copy"), () => Clipboard.SetText(_calc.Entry), shortcut: "Ctrl+C"),
+            MenuItem.Of(L.T("calc.paste"), () =>
+            {
+                if (double.TryParse(Clipboard.GetText().Trim(), NumberStyles.Any,
+                                    CultureInfo.InvariantCulture, out double v))
+                    _calc.SetValue(v);
+            }, shortcut: "Ctrl+V"),
         });
 
         Menu.Add(L.T("calc.help"), () => new List<MenuItem>
@@ -76,8 +114,8 @@ public sealed class CalculatorWindow : OsWindow
     void SetMode(Mode m)
     {
         _mode = m;
-        Bounds.W = m switch { Mode.Standard => 300, Mode.Scientific => 460, _ => 380 };
-        Bounds.H = m switch { Mode.Standard => 300, Mode.Scientific => 340, _ => 260 };
+        Bounds.W = m switch { Mode.Standard => 268, Mode.Scientific => 480, _ => 380 };
+        Bounds.H = m switch { Mode.Standard => 336, Mode.Scientific => 372, _ => 320 };
     }
 
     UiContext _ctx;
@@ -85,30 +123,11 @@ public sealed class CalculatorWindow : OsWindow
     public override void DrawClient(UiContext c, Rect client)
     {
         _ctx = c;
-        c.R.FillRect(client, c.Theme.Face);
-        var area = client.Deflate(8);
+        c.R.FillRect(client, PanelFace);
 
-        // Display.
-        var display = area.CutTop(30);
-        W.SunkenField(c, display);
-        c.R.PushClip(display.Deflate(3));
-        string shown = _mode == Mode.Conversion ? _convInput : _entry;
-        float w = c.F.Big.Measure(shown);
-        c.F.Big.Draw(c.R, shown, display.Right - 6 - w, display.CenterY - c.F.Big.Height * 0.5f, c.Theme.Text);
-        c.R.PopClip();
-
-        // Memory / pending-operator indicators, as on the real thing.
-        var flags = area.CutTop(18);
-        if (_memory != 0)
-        {
-            var m = new Rect(flags.X, flags.Y, 26, 16);
-            W.SunkenField(c, m);
-            c.F.Small.DrawCentered(c.R, "M", m, c.Theme.Text);
-        }
-        if (_statusOp.Length > 0)
-            c.F.Small.Draw(c.R, _statusOp, flags.X + 34, flags.Y + 2, c.Theme.TextDisabled);
-
-        area.CutTop(4);
+        var area = client.Deflate(7);
+        DrawDisplay(c, area.CutTop(58));
+        area.CutTop(7);
 
         switch (_mode)
         {
@@ -120,216 +139,190 @@ public sealed class CalculatorWindow : OsWindow
         HandleKeyboard(c);
     }
 
-    // ---- keypads ---------------------------------------------------------
-
-    void DrawStandard(UiContext c, Rect area)
+    /// <summary>The white panel: the expression in small grey type along the
+    /// top, the number in large type along the bottom, both right-aligned, and
+    /// the memory flag in the corner.</summary>
+    void DrawDisplay(UiContext c, Rect r)
     {
-        string[][] rows =
+        c.R.FillRect(r, DisplayBack);
+        c.R.DrawRect(r, DisplayEdge);
+        // The hairline of shadow seven put inside the top edge.
+        c.R.FillRect(new Rect(r.X + 1, r.Y + 1, r.W - 2, 1), Color.Rgb(0xE0E0E0));
+
+        c.R.PushClip(r.Deflate(4, 2, 4, 2));
+
+        string expression = _mode == Mode.Conversion ? "" : _calc.Expression;
+        if (expression.Length > 0)
         {
-            new[] { "MC", "7", "8", "9", "/", "sqrt" },
-            new[] { "MR", "4", "5", "6", "*", "%" },
-            new[] { "MS", "1", "2", "3", "-", "1/x" },
-            new[] { "M+", "0", "+/-", ".", "+", "=" },
-        };
-        var top = area.CutTop(28);
-        float bw = (top.W - 3 * 4) / 4;
-        string[] clears = { "Backspace", "CE", "C" };
-        for (int i = 0; i < clears.Length; i++)
-        {
-            var r = new Rect(top.X + (i + 1) * (bw + 4), top.Y, bw, 24);
-            if (KeyButton(c, clears[i], r, Color.Rgb(0xC02020))) Press(c, clears[i]);
+            float ew = c.F.Small.Measure(expression);
+            c.F.Small.Draw(c.R, expression, r.Right - 8 - ew, r.Y + 5, Color.Rgb(0x808080));
         }
-        DrawGrid(c, area, rows);
+
+        string shown = _mode == Mode.Conversion ? _convInput : _calc.Entry;
+        float w = c.F.Big.Measure(shown);
+        c.F.Big.Draw(c.R, shown, r.Right - 8 - w, r.Bottom - c.F.Big.Height - 4, Ink);
+
+        c.R.PopClip();
+
+        if (_calc.HasMemory)
+            c.F.Small.Draw(c.R, "M", r.X + 6, r.Bottom - c.F.Small.Height - 5, Color.Rgb(0x606060));
     }
 
-    void DrawScientific(UiContext c, Rect area)
-    {
-        string[][] rows =
-        {
-            new[] { "MC", "7", "8", "9", "/", "sin", "cos", "tan" },
-            new[] { "MR", "4", "5", "6", "*", "asin", "acos", "atan" },
-            new[] { "MS", "1", "2", "3", "-", "ln", "log", "x^y" },
-            new[] { "M+", "0", "+/-", ".", "+", "n!", "pi", "=" },
-        };
-        var top = area.CutTop(28);
-        float bw = (top.W - 7 * 4) / 8;
-        string[] clears = { "Backspace", "CE", "C", "sqrt", "1/x", "%", "x^2", "e" };
-        for (int i = 0; i < clears.Length; i++)
-        {
-            var r = new Rect(top.X + i * (bw + 4), top.Y, bw, 24);
-            if (KeyButton(c, clears[i], r, i < 3 ? Color.Rgb(0xC02020) : c.Theme.Text)) Press(c, clears[i]);
-        }
-        DrawGrid(c, area, rows);
-    }
+    // ---- keypads -------------------------------------------------------------
 
-    void DrawGrid(UiContext c, Rect area, string[][] rows)
+    /// <summary>One key on the pad: where it sits in the grid, how many cells it
+    /// takes, and what it is for.</summary>
+    readonly record struct Key(string Label, int Col, int Row, int ColSpan = 1, int RowSpan = 1,
+                               Kind Kind = Kind.Digit);
+
+    enum Kind { Digit, Operator, Memory, Function, Equals }
+
+    /// <summary>The standard pad, in seven's arrangement: memory across the top,
+    /// then the clears, then the digits with the operators down the right and
+    /// an equals key two rows tall.</summary>
+    static readonly Key[] StandardKeys =
     {
-        float gap = 4;
-        int cols = rows[0].Length;
+        new("MC", 0, 0, Kind: Kind.Memory), new("MR", 1, 0, Kind: Kind.Memory),
+        new("MS", 2, 0, Kind: Kind.Memory), new("M+", 3, 0, Kind: Kind.Memory),
+        new("M-", 4, 0, Kind: Kind.Memory),
+
+        new("Backspace", 0, 1, Kind: Kind.Function), new("CE", 1, 1, Kind: Kind.Function),
+        new("C", 2, 1, Kind: Kind.Function), new("+/-", 3, 1, Kind: Kind.Function),
+        new("sqrt", 4, 1, Kind: Kind.Function),
+
+        new("7", 0, 2), new("8", 1, 2), new("9", 2, 2),
+        new("/", 3, 2, Kind: Kind.Operator), new("%", 4, 2, Kind: Kind.Function),
+
+        new("4", 0, 3), new("5", 1, 3), new("6", 2, 3),
+        new("*", 3, 3, Kind: Kind.Operator), new("1/x", 4, 3, Kind: Kind.Function),
+
+        new("1", 0, 4), new("2", 1, 4), new("3", 2, 4),
+        new("-", 3, 4, Kind: Kind.Operator), new("=", 4, 4, RowSpan: 2, Kind: Kind.Equals),
+
+        new("0", 0, 5, ColSpan: 2), new(".", 2, 5),
+        new("+", 3, 5, Kind: Kind.Operator),
+    };
+
+    /// <summary>The scientific pad: the standard one with three columns of
+    /// functions grafted onto its left, which is how seven grew it too.</summary>
+    static readonly Key[] ScientificKeys =
+    {
+        new("sin", 0, 0, Kind: Kind.Function), new("cos", 1, 0, Kind: Kind.Function),
+        new("tan", 2, 0, Kind: Kind.Function),
+        new("MC", 3, 0, Kind: Kind.Memory), new("MR", 4, 0, Kind: Kind.Memory),
+        new("MS", 5, 0, Kind: Kind.Memory), new("M+", 6, 0, Kind: Kind.Memory),
+        new("M-", 7, 0, Kind: Kind.Memory),
+
+        new("asin", 0, 1, Kind: Kind.Function), new("acos", 1, 1, Kind: Kind.Function),
+        new("atan", 2, 1, Kind: Kind.Function),
+        new("Backspace", 3, 1, Kind: Kind.Function), new("CE", 4, 1, Kind: Kind.Function),
+        new("C", 5, 1, Kind: Kind.Function), new("+/-", 6, 1, Kind: Kind.Function),
+        new("sqrt", 7, 1, Kind: Kind.Function),
+
+        new("ln", 0, 2, Kind: Kind.Function), new("log", 1, 2, Kind: Kind.Function),
+        new("n!", 2, 2, Kind: Kind.Function),
+        new("7", 3, 2), new("8", 4, 2), new("9", 5, 2),
+        new("/", 6, 2, Kind: Kind.Operator), new("%", 7, 2, Kind: Kind.Function),
+
+        new("x^2", 0, 3, Kind: Kind.Function), new("x^y", 1, 3, Kind: Kind.Operator),
+        new("pi", 2, 3, Kind: Kind.Function),
+        new("4", 3, 3), new("5", 4, 3), new("6", 5, 3),
+        new("*", 6, 3, Kind: Kind.Operator), new("1/x", 7, 3, Kind: Kind.Function),
+
+        new("e", 0, 4, Kind: Kind.Function),
+        new("1", 3, 4), new("2", 4, 4), new("3", 5, 4),
+        new("-", 6, 4, Kind: Kind.Operator), new("=", 7, 4, RowSpan: 2, Kind: Kind.Equals),
+
+        new("0", 3, 5, ColSpan: 2), new(".", 5, 5),
+        new("+", 6, 5, Kind: Kind.Operator),
+    };
+
+    void DrawStandard(UiContext c, Rect area) => DrawPad(c, area, StandardKeys, 5, 6);
+
+    void DrawScientific(UiContext c, Rect area) => DrawPad(c, area, ScientificKeys, 8, 6);
+
+    void DrawPad(UiContext c, Rect area, Key[] keys, int cols, int rows)
+    {
+        const float gap = 4;
         float bw = (area.W - gap * (cols - 1)) / cols;
-        float bh = (area.H - gap * (rows.Length - 1)) / rows.Length;
+        float bh = (area.H - gap * (rows - 1)) / rows;
 
-        for (int r = 0; r < rows.Length; r++)
-            for (int i = 0; i < rows[r].Length; i++)
-            {
-                string key = rows[r][i];
-                var rect = new Rect(area.X + i * (bw + gap), area.Y + r * (bh + gap), bw, bh);
-                Color ink = key switch
-                {
-                    "=" => Color.Rgb(0x0050C0),
-                    "/" or "*" or "-" or "+" => Color.Rgb(0x0050C0),
-                    "MC" or "MR" or "MS" or "M+" => Color.Rgb(0xC02020),
-                    _ => c.Theme.Text,
-                };
-                if (KeyButton(c, key, rect, ink)) Press(c, key);
-            }
+        foreach (var key in keys)
+        {
+            var r = new Rect(area.X + key.Col * (bw + gap), area.Y + key.Row * (bh + gap),
+                             bw * key.ColSpan + gap * (key.ColSpan - 1),
+                             bh * key.RowSpan + gap * (key.RowSpan - 1));
+
+            // MC and MR do nothing until there is something to recall, and say
+            // so by going grey — which is what the original did.
+            bool enabled = key.Label is not ("MC" or "MR") || _calc.HasMemory;
+
+            if (SevenButton(c, r, key.Label, key.Kind, enabled)) Press(c, key.Label);
+        }
     }
 
-    bool KeyButton(UiContext c, string label, Rect r, Color ink)
+    /// <summary>A seven key: a hairline border, almost no gradient, and a blue
+    /// wash under the pointer.</summary>
+    bool SevenButton(UiContext c, Rect r, string label, Kind kind, bool enabled = true)
     {
-        bool hover = c.Hovering(r);
+        bool hover = enabled && c.Hovering(r);
         bool held = hover && c.In.IsDown(MouseButton.Left);
-        W.DrawButtonFace(c, r, true, hover, held, label == "=");
 
-        string shown = label switch
+        Color top, bottom, edge;
+        if (kind == Kind.Equals)
         {
-            "Backspace" => L.T("calc.back"),
-            "sqrt" => "√",
-            "pi" => "π",
-            "x^2" => "x²",
-            "x^y" => "xʸ",
-            _ => label,
-        };
-        var font = r.W > 40 ? c.F.Ui : c.F.Small;
-        float w = font.Measure(shown);
-        font.Draw(c.R, shown, r.CenterX - w * 0.5f + (held ? 1 : 0),
-                  r.CenterY - font.Height * 0.5f + (held ? 1 : 0), ink);
+            top = held ? EqualsBottom : hover ? EqualsTop.Shade(1.12f) : EqualsTop;
+            bottom = held ? EqualsTop : EqualsBottom;
+            edge = EqualsEdge;
+        }
+        else if (held) { top = HeldTop; bottom = HeldBottom; edge = HeldEdge; }
+        else if (hover) { top = HotTop; bottom = HotBottom; edge = HotEdge; }
+        else { top = KeyTop; bottom = KeyBottom; edge = KeyEdge; }
 
-        bool clicked = c.Clicked(r);
+        c.R.RoundedRectV(r, 2, top, bottom, edge, 1);
+
+        // The pale line seven ran just inside the top edge of every key.
+        if (kind != Kind.Equals)
+            c.R.FillRect(new Rect(r.X + 1.5f, r.Y + 1.5f, r.W - 3, 1), Color.Rgba(0xFFFFFF, 190));
+
+        Color ink = !enabled ? InkOff
+                  : kind == Kind.Equals ? Color.White
+                  : kind == Kind.Operator ? InkOperator
+                  : kind == Kind.Memory ? Color.Rgb(0x404040)
+                  : Ink;
+
+        string shown = Glyph(label);
+        var font = kind == Kind.Digit || kind == Kind.Equals || shown.Length <= 2
+            ? c.F.Ui : c.F.Small;
+
+        float w = font.Measure(shown);
+        font.Draw(c.R, shown, r.CenterX - w * 0.5f, r.CenterY - font.Height * 0.5f, ink);
+
+        bool clicked = enabled && c.Clicked(r);
         if (clicked) c.SoundAt(Sfx.Click, r, 0.45f, 1.05f);
         return clicked;
     }
 
-    // ---- engine ----------------------------------------------------------
-
-    static string Format(double v)
+    /// <summary>How a key is written on itself. The engine speaks in ASCII; the
+    /// keypad does not have to.</summary>
+    internal static string Glyph(string label) => label switch
     {
-        if (double.IsNaN(v) || double.IsInfinity(v)) return L.T("calc.error");
-        if (MathF.Abs((float)v) >= 1e15 || (v != 0 && MathF.Abs((float)v) < 1e-10))
-            return v.ToString("G12", CultureInfo.InvariantCulture);
-        string s = v.ToString("0.############", CultureInfo.InvariantCulture);
-        return s.Length == 0 ? "0" : s;
-    }
-
-    double Value => double.TryParse(_entry, NumberStyles.Any, CultureInfo.InvariantCulture, out double v) ? v : 0;
-
-    void Digit(char d)
-    {
-        if (_freshEntry) { _entry = d == '.' ? "0." : d.ToString(); _freshEntry = false; return; }
-        if (d == '.' && _entry.Contains('.')) return;
-        if (_entry == "0" && d != '.') _entry = d.ToString();
-        else _entry += d;
-    }
+        "Backspace" => "←",
+        "sqrt" => "√",
+        "pi" => "π",
+        "x^2" => "x²",
+        "x^y" => "xʸ",
+        "/" => "÷",
+        "*" => "×",
+        "1/x" => "1/x",
+        "n!" => "n!",
+        _ => label,
+    };
 
     void Press(UiContext c, string key)
     {
-        if (_mode == Mode.Conversion)
-        {
-            PressConversion(key);
-            return;
-        }
-
-        switch (key)
-        {
-            case "0" or "1" or "2" or "3" or "4" or "5" or "6" or "7" or "8" or "9" or ".":
-                Digit(key[0]);
-                return;
-
-            case "C": _entry = "0"; _accumulator = 0; _pendingOp = null; _statusOp = ""; _freshEntry = true; return;
-            case "CE": _entry = "0"; _freshEntry = true; return;
-            case "Backspace":
-                if (_freshEntry) return;
-                _entry = _entry.Length > 1 ? _entry[..^1] : "0";
-                if (_entry == "-" || _entry.Length == 0) _entry = "0";
-                return;
-
-            case "+/-":
-                _entry = _entry.StartsWith('-') ? _entry[1..] : "-" + _entry;
-                return;
-
-            case "MC": _memory = 0; return;
-            case "MR": _entry = Format(_memory); _freshEntry = true; return;
-            case "MS": _memory = Value; _freshEntry = true; return;
-            case "M+": _memory += Value; _freshEntry = true; return;
-
-            case "+" or "-" or "*" or "/" or "x^y":
-                ApplyPending();
-                _pendingOp = key;
-                _statusOp = key == "x^y" ? "^" : key;
-                _freshEntry = true;
-                return;
-
-            case "=":
-                ApplyPending();
-                _pendingOp = null;
-                _statusOp = "";
-                _freshEntry = true;
-                return;
-
-            case "sqrt": Unary(c, Math.Sqrt); return;
-            case "x^2": Unary(c, v => v * v); return;
-            case "1/x": Unary(c, v => v == 0 ? double.NaN : 1 / v); return;
-            case "%": _entry = Format(_accumulator * Value / 100); _freshEntry = true; return;
-
-            case "sin": Unary(c, Math.Sin); return;
-            case "cos": Unary(c, Math.Cos); return;
-            case "tan": Unary(c, Math.Tan); return;
-            case "asin": Unary(c, Math.Asin); return;
-            case "acos": Unary(c, Math.Acos); return;
-            case "atan": Unary(c, Math.Atan); return;
-            case "ln": Unary(c, v => v <= 0 ? double.NaN : Math.Log(v)); return;
-            case "log": Unary(c, v => v <= 0 ? double.NaN : Math.Log10(v)); return;
-            case "n!": Unary(c, Factorial); return;
-            case "pi": _entry = Format(Math.PI); _freshEntry = true; return;
-            case "e": _entry = Format(Math.E); _freshEntry = true; return;
-        }
-    }
-
-    void Unary(UiContext c, Func<double, double> f)
-    {
-        double r = f(Value);
-        if (double.IsNaN(r) || double.IsInfinity(r))
-        {
-            _entry = L.T("calc.error");
-            c.Sound(Sfx.Error, 0.6f);
-        }
-        else _entry = Format(r);
-        _freshEntry = true;
-    }
-
-    static double Factorial(double v)
-    {
-        if (v < 0 || v != Math.Floor(v) || v > 170) return double.NaN;
-        double r = 1;
-        for (int i = 2; i <= (int)v; i++) r *= i;
-        return r;
-    }
-
-    void ApplyPending()
-    {
-        double rhs = Value;
-        if (_pendingOp == null) { _accumulator = rhs; return; }
-
-        _accumulator = _pendingOp switch
-        {
-            "+" => _accumulator + rhs,
-            "-" => _accumulator - rhs,
-            "*" => _accumulator * rhs,
-            "/" => rhs == 0 ? double.NaN : _accumulator / rhs,
-            "x^y" => Math.Pow(_accumulator, rhs),
-            _ => rhs,
-        };
-        _entry = Format(_accumulator);
+        if (_mode == Mode.Conversion) { PressConversion(key); return; }
+        if (_calc.Press(key)) c.Sound(Sfx.Error, 0.6f);
     }
 
     void HandleKeyboard(UiContext c)
@@ -349,7 +342,7 @@ public sealed class CalculatorWindow : OsWindow
         else if (c.In.KeyPressed(Keys.Delete)) { Press(c, "CE"); c.KeyboardHandled = true; }
     }
 
-    // ---- conversion mode -------------------------------------------------
+    // ---- conversion mode -----------------------------------------------------
 
     sealed record UnitDef(string Key, double ToBase);
 
@@ -394,7 +387,7 @@ public sealed class CalculatorWindow : OsWindow
         var t = c.Theme;
 
         var row = area.CutTop(24);
-        c.F.Ui.Draw(c.R, L.T("calc.category"), row.X, row.Y + 4, t.Text);
+        c.F.Ui.Draw(c.R, L.T("calc.category"), row.X, row.Y + 4, Ink);
         var catNames = Categories.Select(x => L.T(x.key)).ToList();
         if (W.ComboBox(c, Id + ".cat", new Rect(row.X + 90, row.Y, row.W - 90, 22), catNames, ref _category))
         {
@@ -409,44 +402,40 @@ public sealed class CalculatorWindow : OsWindow
         _toUnit = Math.Clamp(_toUnit, 0, units.Length - 1);
 
         row = area.CutTop(24);
-        c.F.Ui.Draw(c.R, L.T("calc.from"), row.X, row.Y + 4, t.Text);
+        c.F.Ui.Draw(c.R, L.T("calc.from"), row.X, row.Y + 4, Ink);
         W.ComboBox(c, Id + ".from", new Rect(row.X + 90, row.Y, row.W - 90, 22), names, ref _fromUnit);
         area.CutTop(6);
 
         row = area.CutTop(24);
-        c.F.Ui.Draw(c.R, L.T("calc.to"), row.X, row.Y + 4, t.Text);
+        c.F.Ui.Draw(c.R, L.T("calc.to"), row.X, row.Y + 4, Ink);
         W.ComboBox(c, Id + ".to", new Rect(row.X + 90, row.Y, row.W - 90, 22), names, ref _toUnit);
         area.CutTop(10);
 
-        double input = double.TryParse(_convInput, NumberStyles.Any, CultureInfo.InvariantCulture, out double v) ? v : 0;
+        double input = double.TryParse(_convInput, NumberStyles.Any, CultureInfo.InvariantCulture,
+                                       out double v) ? v : 0;
         double result = input * units[_fromUnit].ToBase / units[_toUnit].ToBase;
 
         row = area.CutTop(26);
-        c.F.Ui.Draw(c.R, L.T("calc.result"), row.X, row.Y + 5, t.Text);
+        c.F.Ui.Draw(c.R, L.T("calc.result"), row.X, row.Y + 5, Ink);
         var res = new Rect(row.X + 90, row.Y, row.W - 90, 24);
-        W.SunkenField(c, res);
+        c.R.FillRect(res, DisplayBack);
+        c.R.DrawRect(res, DisplayEdge);
         c.R.PushClip(res.Deflate(3));
-        c.F.UiBold.Draw(c.R, Format(result), res.X + 5, res.CenterY - c.F.UiBold.Height * 0.5f, t.Text);
+        c.F.UiBold.Draw(c.R, CalcEngine.Format(result), res.X + 5,
+                        res.CenterY - c.F.UiBold.Height * 0.5f, Ink);
         c.R.PopClip();
 
-        // A compact numeric pad for the conversion input.
+        // A compact numeric pad for the number being converted.
         area.CutTop(8);
-        string[][] rows =
+        Key[] pad =
         {
-            new[] { "7", "8", "9", "C" },
-            new[] { "4", "5", "6", "Backspace" },
-            new[] { "1", "2", "3", "." },
-            new[] { "0", "+/-", "", "" },
+            new("7", 0, 0), new("8", 1, 0), new("9", 2, 0), new("C", 3, 0, Kind: Kind.Function),
+            new("4", 0, 1), new("5", 1, 1), new("6", 2, 1),
+            new("Backspace", 3, 1, Kind: Kind.Function),
+            new("1", 0, 2), new("2", 1, 2), new("3", 2, 2), new(".", 3, 2),
+            new("0", 0, 3, ColSpan: 2), new("+/-", 2, 3, Kind: Kind.Function),
         };
-        float gap = 4, bw = (area.W - gap * 3) / 4, bh = MathF.Max(20, (area.H - gap * 3) / 4);
-        for (int r = 0; r < rows.Length; r++)
-            for (int i = 0; i < 4; i++)
-            {
-                string key = rows[r][i];
-                if (key.Length == 0) continue;
-                var rect = new Rect(area.X + i * (bw + gap), area.Y + r * (bh + gap), bw, bh);
-                if (KeyButton(c, key, rect, key == "C" ? Color.Rgb(0xC02020) : t.Text)) Press(c, key);
-            }
+        DrawPad(c, area, pad, 4, 4);
     }
 
     void PressConversion(string key)

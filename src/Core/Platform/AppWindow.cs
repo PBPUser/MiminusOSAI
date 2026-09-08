@@ -86,7 +86,10 @@ public static class Keys
         O = 0x4F, P = 0x50, Q = 0x51, R = 0x52, S = 0x53, T = 0x54, U = 0x55,
         V = 0x56, W = 0x57, X = 0x58, Y = 0x59, Z = 0x5A,
         F1 = 0x70, F2 = 0x71, F3 = 0x72, F4 = 0x73, F5 = 0x74, F6 = 0x75,
-        F7 = 0x76, F8 = 0x77, F9 = 0x78, F10 = 0x79, F11 = 0x7A, F12 = 0x7B;
+        F7 = 0x76, F8 = 0x77, F9 = 0x78, F10 = 0x79, F11 = 0x7A, F12 = 0x7B,
+
+        // The two version 8 used for snapping a full-screen program to a side.
+        Period = 0xBE, Comma = 0xBC;
 }
 
 /// <summary>Owns the OS window, the GL context and the message pump.</summary>
@@ -326,6 +329,15 @@ public sealed unsafe class AppWindow : IDisposable
         Input.MouseX = x / Input.PointerScale;
         Input.MouseY = y / Input.PointerScale;
         Input.SetButton(MouseButton.Left, true);
+    }
+
+    /// <summary>The same, with the other button — which is the only way a
+    /// scripted run can reach a context menu.</summary>
+    public void InjectRightClick(float x, float y)
+    {
+        Input.MouseX = x / Input.PointerScale;
+        Input.MouseY = y / Input.PointerScale;
+        Input.SetButton(MouseButton.Right, true);
     }
 
     /// <summary>Moves the injected pointer without touching the button, which

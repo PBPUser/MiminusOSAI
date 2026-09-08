@@ -120,7 +120,7 @@ sealed class AppAssembly
 
 /// <summary>Everything under <c>apps/</c>, loaded only when it is used.
 ///
-/// Reading twelve assemblies at startup to ask each one its name is work the
+/// Reading twenty assemblies at startup to ask each one its name is work the
 /// OS does not need to do, so the answers are cached in <c>apps/programs.index</c>
 /// and the DLL itself is opened the first time one of its programs is actually
 /// launched. When the last window from an assembly closes, the assembly is
@@ -151,6 +151,40 @@ public sealed class ProgramRegistry
     public ProgramEntry Find(string id)
         => id != null && _byId.TryGetValue(id, out var e) ? e : null;
 
+    /// <summary>The directory this registry was filled from, so something that
+    /// installs a program knows where to put it.</summary>
+    public string AppsPath { get; private set; }
+
+    /// <summary>Every program that came out of one assembly.</summary>
+    public IEnumerable<ProgramEntry> FromAssembly(string assemblyPath)
+        => _byId.Values.Where(e => string.Equals(e.AssemblyPath, assemblyPath,
+                                                 StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Forgets an assembly and everything it declared, and drops it
+    /// out of memory if it was loaded.
+    ///
+    /// The file itself is not touched — the caller decides whether it is being
+    /// deleted or merely moved somewhere the system does not look.</summary>
+    public void Forget(string assemblyPath)
+    {
+        foreach (var entry in FromAssembly(assemblyPath).ToList())
+            _byId.Remove(entry.Id);
+
+        if (_assemblies.TryGetValue(assemblyPath, out var assembly))
+        {
+            assembly.Unload();
+            _assemblies.Remove(assemblyPath);
+        }
+
+        // The index remembers what each file offered; a file that is gone must
+        // not be remembered, or reinstalling it would use a stale answer.
+        _scanned.Clear();
+        if (AppsPath != null)
+        {
+            try { File.Delete(Path.Combine(AppsPath, IndexFile)); } catch { }
+        }
+    }
+
     /// <summary>Assemblies and their state, for diagnostics.</summary>
     public IEnumerable<(string name, bool loaded, int windows)> Assemblies()
         => _assemblies.Values.Select(a =>
@@ -173,6 +207,7 @@ public sealed class ProgramRegistry
     public int LoadFrom(string directory)
     {
         if (!Directory.Exists(directory)) return 0;
+        AppsPath = directory;
 
         // The directory itself, and one level below it so a custom program can
         // keep its dependencies to itself.

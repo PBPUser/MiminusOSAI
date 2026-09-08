@@ -44,7 +44,7 @@ def dynamic_key_fields():
     pat = re.compile(r'(?:NameKey|TextKey|TooltipKey|LabelKey|SubKey|DescKey)\s*=\s*"([^"]+)"'
                      r'|FolderKey\("([^"]+)"\)'
                      r'|ByKey\([^,]+,\s*"([^"]+)"\)')
-    tuple_pat = re.compile(r'"((?:icon|task|tray|taskbar|paint|sheet|site|start|cpl|sound|unit|track|player|props|about|openwith|theme|newitem)\.[a-z0-9_]+)"')
+    tuple_pat = re.compile(r'"((?:icon|task|tray|taskbar|paint|sheet|site|start|start8|charm|pcs|store|switch|winx|lock|taskmgr8|boot|whatsnew|tbprops|ribbon|nav|lang|logon|access|power|devmgr|regedit|person|screen|calc8|defrag|charmap|weather|photos|notes|cpl|sound|unit|track|player|props|about|openwith|theme|newitem)\.[a-z0-9_]+)"')
     found = set()
     for base, dirs, names in os.walk(SRC):
         dirs[:] = [d for d in dirs if d not in ("obj", "bin", "lang")]
@@ -54,7 +54,9 @@ def dynamic_key_fields():
             text = open(os.path.join(base, n), encoding="utf-8").read()
             for groups in pat.findall(text):
                 found.update(g for g in groups if g)
-            found.update(tuple_pat.findall(text))
+            # Command names in the Run dialog look like keys and are not.
+            found.update(k for k in tuple_pat.findall(text)
+                         if not k.endswith((".exe", ".cpl", ".msc", ".dll")))
     return found
 
 

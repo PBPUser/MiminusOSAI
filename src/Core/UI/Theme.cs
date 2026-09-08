@@ -2,13 +2,15 @@ using Miminus.Graphics;
 
 namespace Miminus.UI;
 
-public enum ThemeId { LunaBlue, LunaOlive, LunaSilver, Seven, Classic }
+public enum ThemeId { LunaBlue, LunaOlive, LunaSilver, Seven, Metro, Classic, HighContrast }
 
 /// <summary>Colours and metrics for one visual style.
 ///
 /// The reference videos span two looks: XP Luna in parts 1–2 and a Windows 7
 /// pastiche ("Миминус 7") in part 3, so the shell is written against this
-/// interface and the Display Properties applet swaps the instance live.</summary>
+/// interface and the Display Properties applet swaps the instance live.
+/// Version 8 adds a third: "Миминус 8", which throws the gradients away
+/// altogether and paints in flat rectangles of one accent colour.</summary>
 public sealed class Theme
 {
     public ThemeId Id;
@@ -73,6 +75,15 @@ public sealed class Theme
     public Color ProgressFill;
     public Color DesktopFallback;
 
+    /// <summary>True for the two styles that have no bevels: «Миминус 7» and
+    /// «Миминус 8». Widgets that only need to know "not an XP raised edge" ask
+    /// this rather than naming a theme.</summary>
+    public bool Flat => Id == ThemeId.Seven || Id == ThemeId.Metro;
+
+    /// <summary>True for «Миминус 8» alone: square corners, one accent colour,
+    /// a Start screen instead of a Start menu.</summary>
+    public bool Modern => Id == ThemeId.Metro;
+
     public string Name => Miminus.Sys.L.T(NameKey);
 
     public static Theme Create(ThemeId id) => id switch
@@ -80,7 +91,9 @@ public sealed class Theme
         ThemeId.LunaOlive => LunaOlive(),
         ThemeId.LunaSilver => LunaSilver(),
         ThemeId.Seven => Seven(),
+        ThemeId.Metro => Metro(),
         ThemeId.Classic => Classic(),
+        ThemeId.HighContrast => HighContrastBlack(),
         _ => LunaBlue(),
     };
 
@@ -357,6 +370,247 @@ public sealed class Theme
             DesktopFallback = Color.Rgb(0x1C4B7C),
         };
         return t;
+    }
+
+
+    /// <summary>"Миминус 8" — the flat style version 8 boots into.
+    ///
+    /// Everything a gradient used to do is done by one colour here: the accent
+    /// is the caption, the selection, the tile and the taskbar highlight, and
+    /// nothing has a rounded corner or a raised edge. The close button going
+    /// red under the pointer is the one flourish, and it is the one the real
+    /// thing had too.</summary>
+    public static Theme Metro()
+    {
+        var t = new Theme
+        {
+            Id = ThemeId.Metro,
+            NameKey = "theme.miminus_8",
+
+            // A white caption inside a hairline of the accent colour. Version 8
+            // did not put a slab of colour round a window — it put a single
+            // line of it, and left everything else white, which is why its
+            // windows read as paper rather than as frames.
+            CaptionActiveTop = Color.Rgb(0xFFFFFF),
+            CaptionActiveMid = Color.Rgb(0xFFFFFF),
+            CaptionActiveBottom = Color.Rgb(0xFFFFFF),
+            CaptionInactiveTop = Color.Rgb(0xF5F5F5),
+            CaptionInactiveMid = Color.Rgb(0xF5F5F5),
+            CaptionInactiveBottom = Color.Rgb(0xF5F5F5),
+            CaptionTextActive = Color.Rgb(0x1A1A1A),
+            CaptionTextInactive = Color.Rgb(0x9A9A9A),
+            CaptionTextShadow = Color.Transparent,
+            FrameOuter = MetroAccent,
+            FrameInner = Color.Rgb(0xFFFFFF),
+            CaptionHeight = 30,
+            FrameThickness = 1,
+            CornerRadius = 0,
+            GlassCaption = false,
+
+            Face = Color.Rgb(0xF0F0F0),
+            FaceLight = Color.Rgb(0xFDFDFD),
+            FaceDark = Color.Rgb(0xE4E4E4),
+            ControlBorder = Color.Rgb(0xACACAC),
+            ControlBorderHot = MetroAccent,
+            FieldBack = Color.Rgb(0xFFFFFF),
+            FieldBorder = Color.Rgb(0xABADB3),
+            Text = Color.Rgb(0x1A1A1A),
+            TextDisabled = Color.Rgb(0xA0A0A0),
+            TextInverted = Color.Rgb(0xFFFFFF),
+
+            Selection = MetroAccent,
+            SelectionText = Color.Rgb(0xFFFFFF),
+            SelectionInactive = Color.Rgb(0xDCDCDC),
+            // The hover wash follows the accent rather than being a fixed
+            // blue: change the colour in «Параметры компьютера» and everything
+            // that lights up under the pointer changes with it.
+            Hot = MetroAccent.WithAlpha(45),
+            Accent = MetroAccent,
+
+            MenuBack = Color.Rgb(0xF5F5F5),
+            MenuGutter = Color.Rgb(0xECECEC),
+            MenuBorder = Color.Rgb(0xB4B4B4),
+            MenuHighlight = MetroAccent,
+            MenuHighlightText = Color.Rgb(0xFFFFFF),
+            MenuSeparator = Color.Rgb(0xD8D8D8),
+
+            // Flat, opaque, and dark: no glass and no reflection.
+            TaskbarTop = Color.Rgb(0x1E1E20),
+            TaskbarMid = Color.Rgb(0x1E1E20),
+            TaskbarBottom = Color.Rgb(0x1E1E20),
+            TaskbarEdge = Color.Rgb(0x101012),
+            TaskbarText = Color.White,
+            TaskButtonFace = Color.Rgba(0xFFFFFF, 22),
+            TaskButtonActive = Color.Rgba(0xFFFFFF, 58),
+            TaskButtonBorder = Color.Transparent,
+            TrayBack = Color.Rgba(0xFFFFFF, 14),
+            TrayEdge = Color.Rgba(0xFFFFFF, 30),
+            TaskbarHeight = 38,
+
+            // The corner the Start screen lives behind.
+            StartTop = MetroAccent,
+            StartMid = MetroAccent,
+            StartBottom = MetroAccent.Shade(0.82f),
+            StartEdge = MetroAccent.Shade(0.7f),
+
+            StartMenuHeaderTop = MetroAccent,
+            StartMenuHeaderBottom = MetroAccent,
+            StartMenuLeft = Color.Rgb(0xFFFFFF),
+            StartMenuRight = Color.Rgb(0xF2F2F2),
+            StartMenuFooterTop = MetroAccent,
+            StartMenuFooterBottom = MetroAccent,
+            StartMenuBorder = MetroAccent,
+
+            Shadow = Color.Rgba(0x000000, 60),
+            TooltipBack = Color.Rgb(0xFFFFFF),
+            TooltipBorder = Color.Rgb(0x767676),
+            TooltipText = Color.Rgb(0x1A1A1A),
+
+            ScrollTrack = Color.Rgb(0xF0F0F0),
+            ScrollThumb = Color.Rgb(0xCDCDCD),
+            ScrollThumbHot = Color.Rgb(0xA6A6A6),
+            ProgressFill = Color.Rgb(0x1CA01C),
+            DesktopFallback = Color.Rgb(0x1F3A55),
+        };
+        return t;
+    }
+
+    /// <summary>The one colour «Миминус 8» is built out of. Everything that was
+    /// a gradient in the older themes is this, flat.
+    ///
+    /// The value is not kept here: it is
+    /// <c>HKEY_CURRENT_USER\Software\Miminus\Appearance\Accent</c>, and this
+    /// is the way the drawing code reaches it. There is one copy of the colour
+    /// and the registry has it, so setting it in Regedit and choosing it in
+    /// Personalisation are the same act — which is what a registry is for.
+    ///
+    /// A theme is built from the colour at the moment it is created, so a
+    /// change means asking for the theme again; <c>ShellHost.SetAccent</c> and
+    /// the registry's own change event both do that.</summary>
+    public static Color MetroAccent
+    {
+        get => Miminus.Sys.Registry.Accent;
+        set => Miminus.Sys.Registry.Accent = value;
+    }
+
+    /// <summary>The colours the personalisation page offers, in the order it
+    /// lays them out. Version 8 had a longer strip; these are the ones that
+    /// look like something when the whole screen is painted in them.</summary>
+    public static readonly Color[] AccentPalette =
+    {
+        Color.Rgb(0x2D89EF),   // blue — the default
+        Color.Rgb(0x00ABA9),   // teal
+        Color.Rgb(0x1E7145),   // green
+        Color.Rgb(0x00A300),   // lime
+        Color.Rgb(0xE3A21A),   // amber
+        Color.Rgb(0xDA532C),   // orange
+        Color.Rgb(0xB91D47),   // crimson
+        Color.Rgb(0x7E3878),   // purple
+        Color.Rgb(0x603CBA),   // violet
+        Color.Rgb(0x2B5797),   // dark blue
+        Color.Rgb(0x647687),   // steel
+        Color.Rgb(0x525E54),   // olive
+    };
+
+    /// <summary>The Start screen's tile palette, in the order groups use it.
+    /// Metro tiles are solid colour and nothing else, so this list is the whole
+    /// of the design.</summary>
+    public static readonly Color[] TileColors =
+    {
+        Color.Rgb(0x2D89EF),   // blue
+        Color.Rgb(0x00A300),   // green
+        Color.Rgb(0xDA532C),   // orange
+        Color.Rgb(0x7E3878),   // purple
+        Color.Rgb(0x2B5797),   // dark blue
+        Color.Rgb(0xB91D47),   // crimson
+        Color.Rgb(0x00ABA9),   // teal
+        Color.Rgb(0xE3A21A),   // amber
+        Color.Rgb(0x603CBA),   // violet
+        Color.Rgb(0x1E7145),   // dark green
+    };
+
+    /// <summary>Высокая контрастность (чёрная) — the accessibility scheme, in
+    /// the colours the real one used: black everywhere, white text, and cyan
+    /// for whatever is selected or active.
+    ///
+    /// It is a theme rather than a filter over one, because that is what it is:
+    /// the shell is already written against a palette, so a palette with no
+    /// gradients in it and a contrast ratio of twenty-one to one is the whole
+    /// implementation. Everything keeps working — the tiles, the ribbon, the
+    /// superbar — in two colours.</summary>
+    public static Theme HighContrastBlack()
+    {
+        var black = Color.Rgb(0x000000);
+        var white = Color.Rgb(0xFFFFFF);
+        var cyan = Color.Rgb(0x1AEBFF);
+        var green = Color.Rgb(0x3FF23F);
+        var yellow = Color.Rgb(0xFFFF00);
+
+        return new Theme
+        {
+            Id = ThemeId.HighContrast,
+            NameKey = "theme.high_contrast",
+
+            CaptionActiveTop = cyan, CaptionActiveMid = cyan, CaptionActiveBottom = cyan,
+            CaptionInactiveTop = black, CaptionInactiveMid = black, CaptionInactiveBottom = black,
+            CaptionTextActive = black,
+            CaptionTextInactive = white,
+            CaptionTextShadow = Color.Transparent,
+            FrameOuter = white,
+            FrameInner = black,
+            CaptionHeight = 28,
+            FrameThickness = 3,
+            CornerRadius = 0,
+            GlassCaption = false,
+
+            Face = black,
+            FaceLight = black,
+            FaceDark = black,
+            ControlBorder = white,
+            ControlBorderHot = yellow,
+            FieldBack = black,
+            FieldBorder = white,
+            Text = white,
+            TextDisabled = green,
+            TextInverted = black,
+
+            Selection = cyan,
+            SelectionText = black,
+            SelectionInactive = Color.Rgb(0x404040),
+            Hot = Color.Rgba(0x1AEBFF, 90),
+            Accent = cyan,
+
+            MenuBack = black,
+            MenuGutter = black,
+            MenuBorder = white,
+            MenuHighlight = cyan,
+            MenuHighlightText = black,
+            MenuSeparator = white,
+
+            TaskbarTop = black, TaskbarMid = black, TaskbarBottom = black,
+            TaskbarEdge = white,
+            TaskbarText = white,
+            TaskButtonFace = Color.Rgba(0xFFFFFF, 40),
+            TaskButtonActive = cyan,
+            TaskButtonBorder = white,
+            TrayBack = black,
+            TrayEdge = white,
+            TaskbarHeight = 40,
+
+            StartTop = cyan, StartMid = cyan, StartBottom = cyan, StartEdge = white,
+
+            StartMenuHeaderTop = cyan, StartMenuHeaderBottom = cyan,
+            StartMenuLeft = black, StartMenuRight = black,
+            StartMenuFooterTop = cyan, StartMenuFooterBottom = cyan,
+            StartMenuBorder = white,
+
+            Shadow = Color.Rgba(0xFFFFFF, 40),
+            TooltipBack = black, TooltipBorder = white, TooltipText = yellow,
+
+            ScrollTrack = black, ScrollThumb = white, ScrollThumbHot = cyan,
+            ProgressFill = green,
+            DesktopFallback = black,
+        };
     }
 
     /// <summary>Windows Classic — flat 3D bevels, no gradients.</summary>

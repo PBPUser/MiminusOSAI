@@ -476,7 +476,7 @@ public sealed unsafe class Font : IDisposable
             var g = GetGlyph(c);
             if (g.W > 0)
             {
-                r.DrawTexture(texture,
+                r.DrawGlyph(texture,
                     new Rect(Snap(pen + g.BearingX / scale), Snap(y + g.BearingY / scale),
                              g.W / scale, g.H / scale),
                     g.U0, g.V0, g.U1, g.V1, color);

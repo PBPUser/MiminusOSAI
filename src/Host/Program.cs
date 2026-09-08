@@ -31,12 +31,22 @@ internal static class Program
             // the record is read before the shell is made.
             FirstRun.Check();
 
+            // The registry is read before the shell exists: the theme is built
+            // out of the accent in it.
+            Registry.Load();
+
             using var shell = new ShellHost(audio);
 
             // Programs live in apps/ next to the executable, one DLL each.
             // What the user chose last time, before any switch is applied: a
             // switch on the command line is meant to win over a stored value.
             SettingsStore.Load(shell, fonts);
+
+            // The tree was seeded in the shell's constructor; the journal of
+            // what the user did to it goes on top, so folders and documents
+            // they made are back where they left them.
+            UserFiles.Load(shell.Fs);
+            shell.Desktop.Populate();
 
             shell.LoadPrograms(Path.Combine(AppContext.BaseDirectory, "apps"));
             if (opts.UpdateUrl != null) shell.Updates.Source = opts.UpdateUrl;
@@ -49,6 +59,7 @@ internal static class Program
             if (opts.Muted) audio.Muted = true;
             if (opts.Theme != null) shell.SetTheme(opts.Theme.Value, fonts);
             if (opts.SkipBoot || opts.Open.Count > 0) shell.SkipToDesktop();
+            if (opts.LockScreen) shell.SkipToLockScreen();
             if (opts.Wallpaper != null) shell.SetWallpaper(opts.Wallpaper.Value);
 
             foreach (var (path, letter) in opts.Mounts)
@@ -86,6 +97,7 @@ internal static class Program
             // is how the screenshot mode captures individual applications.
             bool pendingOpen = opts.Open.Count > 0;
             var pendingClicks = new List<(float x, float y, double at)>(opts.Clicks);
+            var pendingRight = new List<(float x, float y, double at)>(opts.RightClicks);
             var pendingDrags = new List<(float x1, float y1, float x2, float y2, double at)>(opts.Drags);
 
             // A scripted drag runs over several frames: press, a few steps
@@ -170,6 +182,13 @@ internal static class Program
 
                     pendingKeys.RemoveAt(i);
                 }
+                for (int i = pendingRight.Count - 1; i >= 0; i--)
+                {
+                    if (now < pendingRight[i].at) continue;
+                    window.InjectRightClick(pendingRight[i].x, pendingRight[i].y);
+                    pendingRight.RemoveAt(i);
+                }
+
                 for (int i = pendingClicks.Count - 1; i >= 0; i--)
                 {
                     if (now < pendingClicks[i].at) continue;
@@ -214,12 +233,23 @@ internal static class Program
                     shell.Crash(ctx, ex);
                 }
 
+                // Экранная лупа reads the frame back out of the framebuffer, so
+                // the frame has to be in it: the batch is flushed first, and the
+                // magnified strip is then drawn over the top of everything.
+                if (shell.Settings.Magnifier && !shell.Stopped)
+                {
+                    renderer.Flush();
+                    shell.Access.DrawMagnifier(ctx, scale);
+                }
+
                 // The update centre has staged a new build and the installer is
                 // waiting for this process to end.
                 if (shell.ExitRequested) break;
 
                 // Anything the user changed is on disk a second later.
                 SettingsStore.Poll(shell, ctx.Time);
+                UserFiles.Poll(shell.Fs, ctx.Time);
+                Registry.Poll(ctx.Time);
 
                 if (pendingOpen)
                 {
@@ -270,6 +300,8 @@ internal static class Program
 
             // The last change before the window closed still gets written.
             SettingsStore.Flush(shell);
+            UserFiles.Flush(shell.Fs);
+            Registry.Flush();
 
             return 0;
         }
@@ -287,6 +319,7 @@ internal static class Program
         public bool ShowStats;
         public bool ShowHelp;
         public bool SkipBoot;
+        public bool LockScreen;
         public bool Muted;
         public Lang? Lang;
         public ThemeId? Theme;
@@ -298,6 +331,7 @@ internal static class Program
         public readonly List<string> Open = new();
         public readonly List<(string path, string letter)> Mounts = new();
         public readonly List<(float x, float y, double at)> Clicks = new();
+        public readonly List<(float x, float y, double at)> RightClicks = new();
         public readonly List<(int vk, char? ch, double at)> Keys = new();
         public bool MountWritable;
         public readonly List<(float x1, float y1, float x2, float y2, double at)> Drags = new();
@@ -312,11 +346,14 @@ internal static class Program
               --size=WxH        window size (default 1280x800)
               --fullscreen, -f  borderless full screen
               --lang=ru|en      start in this language
-              --theme=NAME      lunablue | lunaolive | lunasilver | seven | classic
+              --theme=NAME      metro | lunablue | lunaolive | lunasilver | seven |
+                                classic | contrast
               --skip-boot       jump straight to the desktop
+              --lock            start on the lock screen
               --open=A,B        launch these programs at start (implies --skip-boot)
-              --wallpaper=NAME  yellow | wave | seven | dark | green | bliss |
-                                azure | sunset | matrix | space | plaid | blueprint
+              --wallpaper=NAME  metro | metrodark | yellow | wave | seven | dark |
+                                green | bliss | azure | sunset | matrix | space |
+                                plaid | blueprint
               --mount=PATH      mount a real folder as a drive (repeatable);
                                 use --mount=X:PATH to pick the drive letter
               --mount-writable  allow the OS to write back to mounted files
@@ -335,6 +372,7 @@ internal static class Program
               --frames=N        capture on frame N (default 4)
               --at=SECONDS      capture after this many seconds instead
               --click=X,Y[,T]   synthesise a click at X,Y after T seconds
+              --rclick=X,Y[,T]  the same with the right button, for context menus
                                 (repeatable; for scripted screenshots)
               --key=NAME[,T]    synthesise a key press: back, enter, esc, del,
                                 or a single character
@@ -351,6 +389,7 @@ internal static class Program
                 else if (a is "--fullscreen" or "-f") o.Fullscreen = true;
                 else if (a == "--stats") o.ShowStats = true;
                 else if (a == "--skip-boot") o.SkipBoot = true;
+                else if (a == "--lock") { o.SkipBoot = true; o.LockScreen = true; }
                 else if (a == "--mute") o.Muted = true;
                 else if (a.StartsWith("--size="))
                 {
@@ -366,7 +405,9 @@ internal static class Program
                         "lunaolive" or "olive" => ThemeId.LunaOlive,
                         "lunasilver" or "silver" => ThemeId.LunaSilver,
                         "seven" or "7" => ThemeId.Seven,
+                        "metro" or "8" => ThemeId.Metro,
                         "classic" => ThemeId.Classic,
+                        "contrast" or "hc" => ThemeId.HighContrast,
                         _ => ThemeId.LunaBlue,
                     };
                 else if (a == "--mount-writable") o.MountWritable = true;
@@ -401,9 +442,10 @@ internal static class Program
                     }
                     if (spec.Length > 0) o.Mounts.Add((spec, letter));
                 }
-                else if (a.StartsWith("--click="))
+                else if (a.StartsWith("--click=") || a.StartsWith("--rclick="))
                 {
-                    string[] p2 = a[8..].Split(',');
+                    bool right = a[2] == 'r';
+                    string[] p2 = a[(right ? 9 : 8)..].Split(',');
                     if (p2.Length >= 2 &&
                         float.TryParse(p2[0], System.Globalization.NumberStyles.Any,
                                        System.Globalization.CultureInfo.InvariantCulture, out float cx) &&
@@ -414,7 +456,7 @@ internal static class Program
                         if (p2.Length >= 3)
                             double.TryParse(p2[2], System.Globalization.NumberStyles.Any,
                                             System.Globalization.CultureInfo.InvariantCulture, out at);
-                        o.Clicks.Add((cx, cy, at));
+                        (right ? o.RightClicks : o.Clicks).Add((cx, cy, at));
                     }
                 }
                 else if (a.StartsWith("--key="))
@@ -480,7 +522,10 @@ internal static class Program
                         "space" => WallpaperId.Space,
                         "plaid" => WallpaperId.Plaid,
                         "blueprint" => WallpaperId.Blueprint,
-                        _ => WallpaperId.MiminusYellow,
+                        "metro" or "eight" => WallpaperId.Miminus8,
+                        "metrodark" or "charcoal" => WallpaperId.Miminus8Dark,
+                        "yellow" => WallpaperId.MiminusYellow,
+                        _ => WallpaperId.Miminus8,
                     };
                 else if (a.StartsWith("--screenshot=")) o.ScreenshotPath = a[13..];
                 else if (a.StartsWith("--frames=") && int.TryParse(a[9..], out int n)) o.ScreenshotFrame = n;

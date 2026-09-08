@@ -14,7 +14,7 @@ namespace Miminus.Apps;
 /// file. So the scan is implemented for real — it types its warnings into the
 /// document one line at a time, beeps as it goes, and finishes by reporting how
 /// many Popovs it found.</summary>
-public sealed class NotepadWindow : OsWindow
+public sealed class NotepadWindow : OsWindow, IScannable
 {
     readonly TextEditor _editor;
     VNode _file;
@@ -57,6 +57,15 @@ public sealed class NotepadWindow : OsWindow
 
         BuildMenu();
     }
+
+    /// <summary>There is exactly one thing in this window to type into, so the
+    /// caret starts in the document and returns to it whenever the window is
+    /// brought forward. Without this the antivirus opens with nothing listening
+    /// and swallows every key until its paper is clicked on — and the antivirus
+    /// is a text file, so being able to type in it is the whole product.</summary>
+    bool _takeCaret = true;
+
+    public override void OnActivated() => _takeCaret = true;
 
     public override void OnOpened(UiContext c)
     {
@@ -159,6 +168,8 @@ public sealed class NotepadWindow : OsWindow
             string count = L.F("notepad.chars_0", _editor.TotalChars);
             W.StatusBar(c, status, _scanning ? L.T("notepad.scanning") : count, mode, pos);
         }
+
+        if (_takeCaret) { c.Focus = Id + ".edit"; _takeCaret = false; }
 
         _editor.Draw(c, area, Id + ".edit");
 

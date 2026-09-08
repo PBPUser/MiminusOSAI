@@ -33,12 +33,17 @@ public sealed class DisplayPropertiesWindow : OsWindow
 
     static readonly ThemeId[] Themes =
     {
-        ThemeId.LunaBlue, ThemeId.LunaOlive, ThemeId.LunaSilver, ThemeId.Seven, ThemeId.Classic,
+        ThemeId.Metro, ThemeId.LunaBlue, ThemeId.LunaOlive, ThemeId.LunaSilver,
+        ThemeId.Seven, ThemeId.Classic, ThemeId.HighContrast,
     };
 
     public override string Title => L.T("display.display_properties");
     public override float MinWidth => 420;
     public override float MinHeight => 460;
+
+    /// <summary>The sheet opens on whichever tab was asked for, so «Заставка»
+    /// can be a program of its own without being a second window.</summary>
+    public DisplayPropertiesWindow(int tab) : this() => _tab = tab;
 
     public DisplayPropertiesWindow()
     {

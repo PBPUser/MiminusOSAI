@@ -9,9 +9,12 @@ public enum IconId
     Network, ControlPanel, Printer, Search, Help, Run, Shutdown, Logoff, Settings,
     DriveHdd, DriveDvd, DriveUsb, Phone, Camera,
     Notepad, Paint, Minesweeper, Calculator, MediaPlayer, Firefox, Opera,
-    Excel, Word, Torrent, Skype, Antivirus, Display, Terminal, Game,
+    Excel, Word, Torrent, Skype, Antivirus, Display, Terminal, Game, Registry,
     DlgInfo, DlgWarning, DlgError, DlgQuestion,
     Star, Globe, Shield, Mail, Clock, Volume, TrayNetwork, Flag,
+
+    // Version 8: the Start screen, the charms and what they open.
+    Tiles, Store, Share, Devices, Power, People, Weather, Lock, PcSettings, Access,
 }
 
 /// <summary>Which procedurally generated picture an image file contains.</summary>
@@ -35,6 +38,40 @@ public static class Icons
         public float Y(float v) => _y + v * _s;
         public float S(float v) => v * _s;
         public Rect R(float x, float y, float w, float h) => new(X(x), Y(y), S(w), S(h));
+    }
+
+    // ---- the two house styles --------------------------------------------
+    //
+    // The icons in this system come in two kinds, and the difference is not
+    // decoration: a program written for the desktop wears the seven look —
+    // saturated, rounded, lit from the top with a gloss across its upper half
+    // and a shadow under it — and a program written for the full screen wears
+    // the eight look, which is one flat shape in one flat colour and nothing
+    // else at all. <see cref="Gloss"/> and <see cref="Drop"/> are the seven
+    // half; the flat ones simply never call them.
+
+    /// <summary>The highlight seven laid over the top half of everything: white
+    /// at the top edge, gone by the middle. It is what made those icons look
+    /// like they were made of something.</summary>
+    static void Gloss(Renderer2D r, C c, float x, float y, float w, float h, float radius = 0)
+    {
+        var top = new Rect(c.X(x), c.Y(y), c.S(w), c.S(h * 0.5f));
+        if (radius > 0) r.RoundedRectV(top, c.S(radius), Color.Rgba(0xFFFFFF, 150),
+                                       Color.Rgba(0xFFFFFF, 20));
+        else r.FillRectV(top, Color.Rgba(0xFFFFFF, 150), Color.Rgba(0xFFFFFF, 20));
+    }
+
+    /// <summary>The soft shadow under a seven icon. Two washes rather than a
+    /// blur: at this size nobody can tell, and it costs two quads.</summary>
+    static void Drop(Renderer2D r, C c, float x, float y, float w, float h, float radius = 0)
+    {
+        for (int i = 2; i >= 1; i--)
+        {
+            var box = new Rect(c.X(x - i * 0.5f), c.Y(y + i * 0.6f),
+                               c.S(w + i), c.S(h + i * 0.4f));
+            if (radius > 0) r.RoundedRect(box, c.S(radius + i * 0.4f), Color.Rgba(0x000000, 26));
+            else r.FillRect(box, Color.Rgba(0x000000, 26));
+        }
     }
 
     // A compact XP-flavoured palette shared by the whole icon set.
@@ -86,6 +123,7 @@ public static class Icons
             case IconId.Shutdown: Shutdown(r, c); break;
             case IconId.Logoff: Logoff(r, c); break;
             case IconId.Settings: Settings(r, c); break;
+            case IconId.Registry: RegistryIcon(r, c); break;
 
             case IconId.DriveHdd: DriveHdd(r, c); break;
             case IconId.DriveDvd: DriveDvd(r, c); break;
@@ -120,6 +158,17 @@ public static class Icons
             case IconId.Volume: Volume(r, c); break;
             case IconId.TrayNetwork: TrayNetwork(r, c); break;
             case IconId.Flag: Flag(r, c); break;
+
+            case IconId.Tiles: Tiles(r, c); break;
+            case IconId.Store: Store(r, c); break;
+            case IconId.Share: Share(r, c); break;
+            case IconId.Devices: Devices(r, c); break;
+            case IconId.Power: Power(r, c); break;
+            case IconId.People: People(r, c); break;
+            case IconId.Weather: Weather(r, c); break;
+            case IconId.Lock: Lock(r, c); break;
+            case IconId.PcSettings: PcSettings(r, c); break;
+            case IconId.Access: Access(r, c); break;
         }
     }
 
@@ -138,8 +187,10 @@ public static class Icons
     static void Folder(Renderer2D r, C c, bool open)
     {
         // Back tab
+        Drop(r, c, 2, 9, 28, 17, 1.5f);
         r.FillRect(c.R(2, 7, 12, 4), ManilaDark);
         r.RoundedRectV(c.R(2, 9, 28, 17), c.S(1.5f), Manila, ManilaDark, ManilaEdge, c.S(1));
+        if (!open) Gloss(r, c, 3, 10, 26, 10, 1.5f);
         if (open)
         {
             // Front flap skewed open
@@ -356,6 +407,30 @@ public static class Icons
         r.FillCircle(c.X(cx), c.Y(cy), c.S(radius - 4f), Color.Rgb(0xEFF3F8));
     }
 
+    /// <summary>«Редактор реестра»: the three blue blocks the registry editor
+    /// has worn since it stopped being a Windows 3 program, drawn in the seven
+    /// style — rounded, lit from the top, with a shadow under the stack.</summary>
+    static void RegistryIcon(Renderer2D r, C c)
+    {
+        Drop(r, c, 5, 5, 22, 22, 2);
+
+        var face = Color.Rgb(0x3F7FD0);
+        var edge = Color.Rgb(0x1F4E86);
+
+        // Three stacked blocks, the middle one indented, which is the shape of
+        // a tree of keys reduced to three rectangles.
+        (float x, float y, float w)[] blocks = { (5, 5, 22), (9, 13.5f, 18), (13, 22, 14) };
+        foreach (var (x, y, w) in blocks)
+        {
+            var box = c.R(x, y, w, 7);
+            r.RoundedRectV(box, c.S(1.4f), face.Shade(1.22f), face, edge, c.S(1));
+            r.FillRect(new Rect(box.X + c.S(2), box.Y + c.S(2.6f), c.S(w - 4), c.S(1)),
+                       Color.Rgba(0xFFFFFF, 170));
+        }
+
+        Gloss(r, c, 5, 5, 22, 8, 1.4f);
+    }
+
     static void Settings(Renderer2D r, C c) => Gear(r, c, 16, 16, 11, Color.Rgb(0x6E8BB5));
 
     static void Printer(Renderer2D r, C c)
@@ -454,17 +529,26 @@ public static class Icons
 
     static void Notepad(Renderer2D r, C c)
     {
-        r.FillRect(c.R(5, 3, 22, 26), Paper);
-        r.DrawRect(c.R(5, 3, 22, 26), SteelDark);
-        r.FillRectV(c.R(6, 4, 20, 4), Color.Rgb(0x4A8BE0), Color.Rgb(0x2B5FA8));
+        Drop(r, c, 5, 3, 22, 26, 1.5f);
+        r.RoundedRectV(c.R(5, 3, 22, 26), c.S(1.5f), Color.White, Color.Rgb(0xDCE4EE),
+                       Color.Rgb(0x6E7A8C), c.S(1));
+
+        // The blue title strip, and the paper under it.
+        r.FillRectV(c.R(6, 4, 20, 5), Color.Rgb(0x6FB0F5), Color.Rgb(0x2B5FA8));
         for (int i = 0; i < 6; i++)
-            r.FillRect(c.R(8, 11 + i * 2.8f, i == 5 ? 8 : 16, 1), Ink);
+            r.FillRect(c.R(8, 12 + i * 2.7f, i == 5 ? 8 : 16, 1), Ink);
+
+        Gloss(r, c, 6, 4, 20, 11, 1);
     }
 
     static void Paint(Renderer2D r, C c)
     {
         // palette
-        r.FillCircle(c.X(14), c.Y(17), c.S(11), Color.Rgb(0xF0E2C8));
+        r.FillCircle(c.X(14), c.Y(18), c.S(11.4f), Color.Rgba(0x000000, 40));
+        r.FillCircle(c.X(14), c.Y(17), c.S(11), Color.Rgb(0xF6EDD8));
+        r.PushClip(new Rect(c.X(3), c.Y(6), c.S(22), c.S(11)));
+        r.FillCircle(c.X(14), c.Y(16), c.S(10), Color.Rgba(0xFFFFFF, 110));
+        r.PopClip();
         r.DrawCircle(c.X(14), c.Y(17), c.S(11), Color.Rgb(0xA88C60), c.S(1));
         r.FillCircle(c.X(18), c.Y(21), c.S(3), Color.Rgb(0xF0E2C8).Shade(0.75f));
         r.FillCircle(c.X(9), c.Y(13), c.S(2.2f), Color.Rgb(0xD03030));
@@ -478,10 +562,11 @@ public static class Icons
 
     static void Minesweeper(Renderer2D r, C c)
     {
-        r.FillRect(c.R(2, 2, 28, 28), Color.Rgb(0xC0C0C0));
-        r.DrawRect(c.R(2, 2, 28, 28), Color.Rgb(0x808080));
+        Drop(r, c, 2, 2, 28, 28, 2);
+        r.RoundedRectV(c.R(2, 2, 28, 28), c.S(2), Color.Rgb(0xE8E8E8), Color.Rgb(0xA8A8A8),
+                       Color.Rgb(0x707070), c.S(1));
         r.FillCircle(c.X(16), c.Y(18), c.S(8), Color.Black);
-        r.FillCircle(c.X(13), c.Y(15), c.S(2.2f), Color.Rgba(0xFFFFFF, 210));
+        r.FillCircle(c.X(13), c.Y(15), c.S(2.4f), Color.Rgba(0xFFFFFF, 210));
         // spikes
         r.FillRect(c.R(15, 6, 2, 24), Color.Black);
         r.FillRect(c.R(4, 17, 24, 2), Color.Black);
@@ -492,19 +577,38 @@ public static class Icons
 
     static void Calculator(Renderer2D r, C c)
     {
-        r.RoundedRectV(c.R(5, 2, 22, 28), c.S(2), Color.Rgb(0xE8EDF4), Color.Rgb(0xB6C2D2), SteelDark, c.S(1));
-        r.FillRect(c.R(7.5f, 5, 17, 6), Color.Rgb(0xBFD8A8));
-        r.DrawRect(c.R(7.5f, 5, 17, 6), Color.Rgb(0x6E8060));
+        Drop(r, c, 5, 2, 22, 28, 2);
+        r.RoundedRectV(c.R(5, 2, 22, 28), c.S(2), Color.Rgb(0xF4F7FB), Color.Rgb(0x9EAEC2),
+                       Color.Rgb(0x5A6678), c.S(1));
+
+        // The display, sunk into the case.
+        r.RoundedRectV(c.R(7.5f, 5, 17, 6), c.S(1), Color.Rgb(0x9FC088), Color.Rgb(0xD6E8C4),
+                       Color.Rgb(0x5A6E4C), c.S(1));
+
         for (int row = 0; row < 4; row++)
             for (int col = 0; col < 4; col++)
-                r.RoundedRect(c.R(7.5f + col * 4.4f, 13 + row * 4.2f, 3.6f, 3.4f), c.S(0.8f),
-                              row == 3 && col == 3 ? Color.Rgb(0xE08040) : Color.Rgb(0x8894A6));
+            {
+                var key = c.R(7.5f + col * 4.4f, 13 + row * 4.2f, 3.6f, 3.4f);
+                bool equals = row == 3 && col == 3;
+                r.RoundedRectV(key, c.S(0.8f),
+                               equals ? Color.Rgb(0xFFB060) : Color.Rgb(0xC6D0DC),
+                               equals ? Color.Rgb(0xD06810) : Color.Rgb(0x76839A));
+            }
+
+        Gloss(r, c, 5, 2, 22, 16, 2);
     }
 
     static void MediaPlayer(Renderer2D r, C c)
     {
-        r.FillCircle(c.X(16), c.Y(16), c.S(13), Color.Rgb(0xE85C20));
-        r.FillCircle(c.X(16), c.Y(16), c.S(11), Color.Rgb(0xF58A3C));
+        r.FillCircle(c.X(16), c.Y(17), c.S(13.4f), Color.Rgba(0x000000, 40));
+        r.FillCircle(c.X(16), c.Y(16), c.S(13), Color.Rgb(0xC24A10));
+        r.FillCircle(c.X(16), c.Y(16), c.S(11.6f), Color.Rgb(0xF58A3C));
+
+        // The lit upper half, which is what a seven orb was.
+        r.PushClip(new Rect(c.X(4), c.Y(4), c.S(24), c.S(13)));
+        r.FillCircle(c.X(16), c.Y(15), c.S(10.4f), Color.Rgba(0xFFFFFF, 90));
+        r.PopClip();
+
         r.FillTriangle(c.X(13), c.Y(10), c.X(13), c.Y(22), c.X(23), c.Y(16), Color.White);
     }
 
@@ -562,8 +666,10 @@ public static class Icons
 
     static void Terminal(Renderer2D r, C c)
     {
-        r.RoundedRect(c.R(3, 5, 26, 22), c.S(1.5f), Color.Rgb(0x101418), Color.Rgb(0x50596A), c.S(1));
-        r.FillRect(c.R(4, 6, 24, 3), Color.Rgb(0x2A3240));
+        Drop(r, c, 3, 5, 26, 22, 1.5f);
+        r.RoundedRectV(c.R(3, 5, 26, 22), c.S(1.5f), Color.Rgb(0x1C242E), Color.Rgb(0x0A0E12),
+                       Color.Rgb(0x6E7A8C), c.S(1));
+        r.FillRectV(c.R(4, 6, 24, 4), Color.Rgb(0x4A5668), Color.Rgb(0x2A3240));
         r.Line(c.X(7), c.Y(14), c.X(11), c.Y(17), Color.Rgb(0x50E050), c.S(1.8f));
         r.Line(c.X(11), c.Y(17), c.X(7), c.Y(20), Color.Rgb(0x50E050), c.S(1.8f));
         r.FillRect(c.R(13, 19, 9, 1.6f), Color.Rgb(0x50E050));
@@ -703,5 +809,150 @@ public static class Icons
     {
         r.FillRect(c.R(8, 4, 1.8f, 24), Color.Rgb(0x40485A));
         r.FillTriangle(c.X(10), c.Y(5), c.X(24), c.Y(10), c.X(10), c.Y(15), Color.Rgb(0xD03030));
+    }
+
+    // ---- version 8: Start screen and charms ------------------------------
+    //
+    // These are the other house style: one flat tile in one flat colour with a
+    // white glyph cut out of it, no gradient, no gloss and no shadow. They are
+    // deliberately plainer than the desktop icons above — that difference is
+    // the whole visual argument version 8 was making, and reproducing it means
+    // reproducing both halves of it.
+
+    /// <summary>The flat square a modern icon is built on: the accent colour,
+    /// edge to edge, with nothing on it yet.</summary>
+    static void Tile(Renderer2D r, C c, Color colour)
+        => r.FillRect(c.R(2, 2, 28, 28), colour);
+
+    static readonly Color MetroBlue = Color.Rgb(0x2D89EF);
+
+    /// <summary>The four-pane Start glyph, flat and square — no orb.</summary>
+    static void Tiles(Renderer2D r, C c)
+    {
+        r.FillRect(c.R(4, 4, 11, 11), MetroBlue);
+        r.FillRect(c.R(17, 4, 11, 11), MetroBlue);
+        r.FillRect(c.R(4, 17, 11, 11), MetroBlue);
+        r.FillRect(c.R(17, 17, 11, 11), MetroBlue);
+    }
+
+    /// <summary>«Магазин» — a shopping bag with the same four panes on it.</summary>
+    static void Store(Renderer2D r, C c)
+    {
+        Tile(r, c, MetroBlue);
+
+        // The bag: a white outline and the four panes inside it, flat.
+        r.DrawRect(c.R(8, 12, 16, 14), Color.White, c.S(1.6f));
+        r.DrawCircle(c.X(16), c.Y(12), c.S(4.5f), Color.White, c.S(1.6f));
+        r.FillRect(c.R(8, 8, 16, 5), MetroBlue);
+
+        r.FillRect(c.R(11, 16, 4, 4), Color.White);
+        r.FillRect(c.R(16.5f, 16, 4, 4), Color.White);
+        r.FillRect(c.R(11, 21.5f, 4, 4), Color.White);
+        r.FillRect(c.R(16.5f, 21.5f, 4, 4), Color.White);
+    }
+
+    /// <summary>«Общий доступ» — an arrow leaving a box.</summary>
+    static void Share(Renderer2D r, C c)
+    {
+        r.DrawRect(c.R(5, 13, 22, 15), Color.Rgb(0x3A3A3A), c.S(2.2f));
+        r.FillRect(c.R(14.8f, 9, 2.4f, 13), Color.Rgb(0x3A3A3A));
+        r.FillTriangle(c.X(16), c.Y(3), c.X(9.5f), c.Y(11), c.X(22.5f), c.Y(11),
+                       Color.Rgb(0x3A3A3A));
+    }
+
+    /// <summary>«Устройства» — a monitor with a second screen behind it.</summary>
+    static void Devices(Renderer2D r, C c)
+    {
+        // A monitor and a slab, both outlined and both flat.
+        var ink = Color.Rgb(0x3A3A3A);
+        r.DrawRect(c.R(3, 6, 18, 13), ink, c.S(2));
+        r.FillRect(c.R(10, 19, 5, 3), ink);
+        r.FillRect(c.R(7, 22, 11, 2), ink);
+
+        r.DrawRect(c.R(21, 12, 8, 16), ink, c.S(2));
+        r.FillRect(c.R(23.5f, 25, 3, 1.6f), ink);
+    }
+
+    /// <summary>The power symbol the Settings charm hangs its menu from.</summary>
+    static void Power(Renderer2D r, C c)
+    {
+        var col = Color.Rgb(0x3A4250);
+
+        // The ring is drawn as segments rather than a circle, so the gap the
+        // bar rises through is simply a stretch that is never drawn.
+        const int steps = 30;
+        const float gap = 0.62f;
+        float px = 0, py = 0;
+        for (int i = 0; i <= steps; i++)
+        {
+            float a = -MathF.PI / 2 + gap + i * (MathF.PI * 2 - gap * 2) / steps;
+            float x = c.X(16 + MathF.Cos(a) * 10), y = c.Y(18 + MathF.Sin(a) * 10);
+            if (i > 0) r.Line(px, py, x, y, col, c.S(2.6f));
+            px = x; py = y;
+        }
+        r.FillRect(c.R(14.6f, 4, 2.8f, 13), col);
+    }
+
+    /// <summary>«Люди» — two heads, for the contacts tile.</summary>
+    static void People(Renderer2D r, C c)
+    {
+        r.FillCircle(c.X(11), c.Y(12), c.S(5.4f), Color.White);
+        r.FillCircle(c.X(11), c.Y(26), c.S(9), Color.White);
+        r.FillCircle(c.X(22), c.Y(13), c.S(4.4f), Color.Rgba(0xFFFFFF, 170));
+        r.FillCircle(c.X(23), c.Y(26), c.S(7.4f), Color.Rgba(0xFFFFFF, 170));
+    }
+
+    /// <summary>«Погода» — sun behind a cloud, for the live tile.</summary>
+    static void Weather(Renderer2D r, C c)
+    {
+        r.FillCircle(c.X(21), c.Y(11), c.S(6.5f), Color.Rgb(0xFFD24A));
+        r.FillCircle(c.X(11), c.Y(21), c.S(7), Color.White);
+        r.FillCircle(c.X(20), c.Y(21), c.S(6), Color.White);
+        r.FillRect(c.R(11, 20, 9, 7), Color.White);
+    }
+
+    /// <summary>A padlock — the lock screen, and Win+L.</summary>
+    static void Lock(Renderer2D r, C c)
+    {
+        // The padlock, flat: a shackle drawn as a ring and a body drawn as a
+        // rectangle, in one colour.
+        var ink = Color.Rgb(0x3A3A3A);
+        r.DrawCircle(c.X(16), c.Y(12.5f), c.S(6), ink, c.S(2.4f));
+        r.FillRect(c.R(8, 12, 16, 4), Color.Transparent);
+        r.FillRect(c.R(6, 15, 20, 13), ink);
+        r.FillCircle(c.X(16), c.Y(21), c.S(2.2f), Color.White);
+    }
+
+    /// <summary>Специальные возможности: the figure with its arms out, which
+    /// is the mark accessibility has had since before any of this.</summary>
+    static void Access(Renderer2D r, C c)
+    {
+        var col = MetroBlue;
+        r.FillCircle(c.X(16), c.Y(16), c.S(13), col);
+        r.FillCircle(c.X(16), c.Y(9.5f), c.S(2.6f), Color.White);
+        // Arms.
+        r.Line(c.X(9), c.Y(15), c.X(23), c.Y(15), Color.White, c.S(2.2f));
+        // Body and legs.
+        r.Line(c.X(16), c.Y(13), c.X(16), c.Y(19), Color.White, c.S(2.2f));
+        r.Line(c.X(16), c.Y(19), c.X(12), c.Y(24), Color.White, c.S(2.2f));
+        r.Line(c.X(16), c.Y(19), c.X(20), c.Y(24), Color.White, c.S(2.2f));
+    }
+
+    /// <summary>«Параметры компьютера» — a gear on a tile.</summary>
+    static void PcSettings(Renderer2D r, C c)
+    {
+        Tile(r, c, MetroBlue);
+
+        // A gear cut out of the tile in white: teeth as spokes, a ring, a hole.
+        float cx = c.X(16), cy = c.Y(16);
+        for (int i = 0; i < 8; i++)
+        {
+            float a = i * MathF.PI / 4;
+            r.Line(cx + MathF.Cos(a) * c.S(6), cy + MathF.Sin(a) * c.S(6),
+                   cx + MathF.Cos(a) * c.S(10), cy + MathF.Sin(a) * c.S(10),
+                   Color.White, c.S(3));
+        }
+        r.FillCircle(cx, cy, c.S(7), Color.White);
+        r.FillCircle(cx, cy, c.S(3), MetroBlue);
     }
 }

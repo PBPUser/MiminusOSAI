@@ -25,7 +25,11 @@ public sealed class DesktopIcon
     public Rect Bounds;
     public bool Selected;
 
-    public string Label => LiteralLabel ?? L.T(LabelKey);
+    /// <summary>What the icon is called. For something the user made, the
+    /// node's own name is the truth — it is what a rename changes, and what the
+    /// journal writes down — so that wins over anything cached here.</summary>
+    public string Label => Node is { UserCreated: true } ? Node.Name
+                         : LiteralLabel ?? L.T(LabelKey);
 }
 
 /// <summary>The desktop layer: wallpaper, icon grid, rubber-band selection and
@@ -34,7 +38,7 @@ public sealed class DesktopIcon
 public sealed class Desktop
 {
     public readonly List<DesktopIcon> Icons = new();
-    public WallpaperId Current = WallpaperId.MiminusYellow;
+    public WallpaperId Current = WallpaperId.Miminus8;
 
     readonly ShellHost _shell;
 
@@ -49,6 +53,30 @@ public sealed class Desktop
 
     const float TopPad = 8, LeftPad = 8;
 
+    /// <summary>Where the grid of icons starts. Normally the top-left corner of
+    /// the screen with a little padding, but a taskbar standing up the left or
+    /// lying across the top is in the way, and the icons move over rather than
+    /// under it.</summary>
+    float GridLeft
+    {
+        get
+        {
+            var bar = _shell.Taskbar;
+            return LeftPad + (bar != null && bar.Edge == TaskbarEdge.Left
+                ? bar.Reserve(_shell.Theme) : 0);
+        }
+    }
+
+    float GridTop
+    {
+        get
+        {
+            var bar = _shell.Taskbar;
+            return TopPad + (bar != null && bar.Edge == TaskbarEdge.Top
+                ? bar.Reserve(_shell.Theme) : 0);
+        }
+    }
+
     // Cell and glyph size follow the "use large icons" effect.
     float CellW => _shell.Settings.DesktopCellSize;
     float CellH => _shell.Settings.DesktopCellSize;
@@ -60,9 +88,15 @@ public sealed class Desktop
         Populate();
     }
 
-    void Populate()
+    /// <summary>Fills the desktop from the tree. Called once when the shell is
+    /// built, and again once the journal of what the user made has been
+    /// replayed over it — which is when the folders they created reappear.</summary>
+    public void Populate()
     {
         var fs = _shell.Fs;
+
+        // Filling it again replaces what is there rather than adding to it.
+        Icons.Clear();
 
         // The working shell places, in the order XP put them.
         Add("icon.my_computer", IconId.MyComputer, launch: "mycomputer");
@@ -144,6 +178,24 @@ public sealed class Desktop
             Add(key, icon, decorative: true);
 
         Relayout(1280, 800);
+        // Whatever the user made on the desktop, this run or a previous one:
+        // the journal puts the nodes back before this runs, so their icons come
+        // back with them. Everything above is seeded and named by hand; these
+        // are only ever the extras.
+        foreach (var node in fs.Desktop.Children)
+        {
+            if (!node.UserCreated) continue;
+            if (Icons.Any(icon => icon.Node == node)) continue;
+
+            Icons.Add(new DesktopIcon
+            {
+                Icon = node.Icon,
+                Node = node,
+                Launch = node.Launch ?? (node.IsContainer ? "explorer" : null),
+                Shortcut = node.Kind == NodeKind.Shortcut,
+            });
+        }
+
     }
 
     /// <summary>Adds a desktop shortcut for a mounted host drive. Its label is the
@@ -173,7 +225,10 @@ public sealed class Desktop
     /// <summary>Fills columns top-to-bottom then wraps, the way Explorer does.</summary>
     public void Relayout(int screenW, int screenH)
     {
-        int rows = Math.Max(1, (int)((screenH - _shell.Theme.TaskbarHeight - TopPad) / CellH));
+        // The taskbar may not exist yet the first time the desktop is filled,
+        // and when it does it only eats into this if it is along the bottom.
+        float foot = _shell.Taskbar?.BottomInset(_shell.Theme) ?? _shell.Theme.TaskbarHeight;
+        int rows = Math.Max(1, (int)((screenH - foot - GridTop) / CellH));
         for (int i = 0; i < Icons.Count; i++)
         {
             Icons[i].Col = i / rows;
@@ -182,7 +237,7 @@ public sealed class Desktop
         }
     }
 
-    Rect CellRect(int col, int row) => new(LeftPad + col * CellW, TopPad + row * CellH, CellW, CellH);
+    Rect CellRect(int col, int row) => new(GridLeft + col * CellW, GridTop + row * CellH, CellW, CellH);
 
     public void ClearSelection()
     {
@@ -195,11 +250,25 @@ public sealed class Desktop
     /// beneath every window; interaction happens later in <see cref="Update"/>.</summary>
     public void Draw(UiContext c)
     {
-        var screen = new Rect(0, 0, c.ScreenW, c.ScreenH - c.Theme.TaskbarHeight);
+        var screen = _shell.Taskbar.WorkArea(c);
         var wp = _shell.Wallpapers.Get(Current);
 
-        if (wp.Texture != null) c.R.DrawTexture(wp.Texture, new Rect(0, 0, c.ScreenW, c.ScreenH));
-        else c.R.FillRect(new Rect(0, 0, c.ScreenW, c.ScreenH), wp.Fallback);
+        // One painting per monitor, so the picture does not stretch across the
+        // seam — which is what a second screen looks like when it is working.
+        foreach (var m in _shell.Displays.All(c.ScreenW, c.ScreenH))
+        {
+            if (!m.Enabled) continue;
+            if (wp.Texture != null) c.R.DrawTexture(wp.Texture, m.Bounds);
+            else c.R.FillRect(m.Bounds, wp.Fallback);
+        }
+
+        // The seam itself, so the two screens read as two.
+        if (_shell.Displays.Extended)
+        {
+            var second = _shell.Displays.All(c.ScreenW, c.ScreenH)[1];
+            float seam = second.Bounds.X <= 1 ? second.Bounds.Right : second.Bounds.X;
+            c.R.FillRect(new Rect(seam - 1, 0, 2, c.ScreenH), Color.Rgba(0x000000, 130));
+        }
 
         wp.Overlay?.Invoke(c, screen);
 
@@ -349,7 +418,7 @@ public sealed class Desktop
             if (icon != _renaming) HandleIcon(c, icon, cell);
         }
 
-        HandleBackground(c, new Rect(0, 0, c.ScreenW, c.ScreenH - c.Theme.TaskbarHeight));
+        HandleBackground(c, _shell.Taskbar.WorkArea(c));
     }
 
     void HandleIcon(UiContext c, DesktopIcon icon, Rect cell)
@@ -406,8 +475,12 @@ public sealed class Desktop
                 // a folder window means something else, so the file is offered
                 // to the rest of the shell at the same time and whichever
                 // reading the pointer ends on is the one that happens.
-                if (_dragMoved && _dragIcon.Node != null && !_shell.Drag.Dragging)
-                    _shell.Drag.Begin(_dragIcon.Node, _dragIcon.Icon, _dragIcon.Label, this);
+                // A shortcut to a program has no file behind it, and is
+                // carried all the same: the taskbar wants the program.
+                if (_dragMoved && !_shell.Drag.Dragging &&
+                    (_dragIcon.Node != null || !string.IsNullOrEmpty(_dragIcon.Launch)))
+                    _shell.Drag.Begin(_dragIcon.Node, _dragIcon.Icon, _dragIcon.Label, this,
+                                      _dragIcon.Launch);
 
                 c.MouseHandled = true;
                 if (_dragMoved) c.Cursor = CursorShape.Move;
@@ -486,14 +559,14 @@ public sealed class Desktop
     {
         float x = c.MouseX - _dragDX;
         float y = c.MouseY - _dragDY;
-        int col = Math.Max(0, (int)MathF.Round((x - LeftPad) / CellW));
-        int row = Math.Max(0, (int)MathF.Round((y - TopPad) / CellH));
+        int col = Math.Max(0, (int)MathF.Round((x - GridLeft) / CellW));
+        int row = Math.Max(0, (int)MathF.Round((y - GridTop) / CellH));
 
         // Nudge along until a free cell is found so icons never stack.
         while (Icons.Any(i => i != icon && i.Col == col && i.Row == row))
         {
             row++;
-            if (TopPad + row * CellH + CellH > c.ScreenH - c.Theme.TaskbarHeight) { row = 0; col++; }
+            if (GridTop + row * CellH + CellH > _shell.Taskbar.WorkArea(c).Bottom) { row = 0; col++; }
         }
         icon.Col = col;
         icon.Row = row;
@@ -653,8 +726,30 @@ public sealed class Desktop
             MenuItem.Of(L.T("desktop.winrar_archive"), () => CreateOnDesktop(c, NodeKind.Archive)),
         };
 
+        // «Вид»: the three icon sizes, which is the first thing anybody looks
+        // for in this menu and the only thing it never had here.
+        var view = new List<MenuItem>();
+        string[] sizeKeys = { "desktop.icons_small", "desktop.icons_medium", "desktop.icons_large" };
+        for (int i = 0; i < sizeKeys.Length; i++)
+        {
+            int step = i;
+            view.Add(new MenuItem
+            {
+                Text = L.T(sizeKeys[i]),
+                IsRadio = true,
+                Checked = _shell.Settings.DesktopIcons == step,
+                Click = () =>
+                {
+                    _shell.Settings.DesktopIcons = step;
+                    Relayout(c.ScreenW, c.ScreenH);
+                    c.Sound(Sfx.Navigate, 0.4f);
+                },
+            });
+        }
+
         var items = new List<MenuItem>
         {
+            MenuItem.Sub(L.T("desktop.view"), view),
             MenuItem.Sub(L.T("desktop.arrange_icons_by"), arrange),
             MenuItem.Of(L.T("desktop.refresh"), () => { Relayout(c.ScreenW, c.ScreenH); c.Sound(Sfx.Navigate, 0.4f); }),
             MenuItem.Sep(),
@@ -663,7 +758,13 @@ public sealed class Desktop
             MenuItem.Sep(),
             MenuItem.Sub(L.T("desktop.new"), create),
             MenuItem.Sep(),
-            MenuItem.Of(L.T("desktop.properties"), () => _shell.Launch(c, "display", null), IconId.Display),
+
+            // «Свойства» was one sheet with five tabs. Seven split it in two and
+            // put both halves at the foot of this menu, and version 8 kept them
+            // there — so this is where the two Control Panel pages are opened
+            // from, rather than the old property sheet.
+            MenuItem.Of(L.T("screen.title"), () => _shell.Launch(c, "screenres", null), IconId.Devices),
+            MenuItem.Of(L.T("person.title"), () => _shell.Launch(c, "personalise", null), IconId.Display),
         };
 
         _shell.Menus.Open(items, c.MouseX, c.MouseY, this, c);

@@ -109,7 +109,31 @@ void main()
         discard;
 
     vec4 col = vColor;
-    if (vParams.w > 0.5)
+
+    if (vParams.w > 1.5)
+    {
+        // A glyph. The atlas holds coverage, not colour, and the blend is
+        // already going to multiply the result by alpha — so multiplying the
+        // colour by the coverage as well would darken every antialiased edge
+        // twice over, which is what made small text look bruised and thin.
+        // Coverage belongs in alpha and nowhere else.
+        vec3 cov = texture(uTex, vUV).rgb;
+        float a = (cov.r + cov.g + cov.b) * (1.0 / 3.0);
+        if (a <= 0.002) discard;
+
+        // ClearType's three channels differ from each other; dividing the
+        // average out keeps that difference as a colour fringe without letting
+        // it dim the glyph. Greyscale coverage has r == g == b, so this is
+        // exactly 1.0 and the colour is left alone.
+        col.rgb *= cov / a;
+        col.a *= a;
+
+        // Coverage is linear and the screen is not: without this the strokes
+        // between the solid parts of a letter land too faint, and text at
+        // small sizes reads grey instead of black.
+        col.a = pow(col.a, 0.78);
+    }
+    else if (vParams.w > 0.5)
         col *= texture(uTex, vUV);
 
     if (vParams.z > 0.5)
@@ -475,6 +499,20 @@ void main()
         uint c = tint.Packed;
         PushQuad(dest.X, dest.Y, dest.Right, dest.Y, dest.Right, dest.Bottom, dest.X, dest.Bottom,
                  u0, v0, u1, v1, c, c, c, c, 0, 0, 0, 0, 0, 0, 0, 0, 1);
+    }
+
+    /// <summary>A glyph out of the font atlas. It is the same quad as any other
+    /// piece of texture with one difference the shader has to be told about:
+    /// what is in the texture is coverage rather than colour, so it belongs in
+    /// alpha alone. Everything about how text looks depends on that
+    /// distinction.</summary>
+    public void DrawGlyph(Texture tex, Rect dest, float u0, float v0, float u1, float v1, Color tint)
+    {
+        if (tex == null || dest.W <= 0 || dest.H <= 0 || tint.A == 0) return;
+        UseTexture(tex.Id);
+        uint c = tint.Packed;
+        PushQuad(dest.X, dest.Y, dest.Right, dest.Y, dest.Right, dest.Bottom, dest.X, dest.Bottom,
+                 u0, v0, u1, v1, c, c, c, c, 0, 0, 0, 0, 0, 0, 0, 0, 2);
     }
 
     /// <summary>Draws a sub-rectangle given source pixels rather than UVs.</summary>

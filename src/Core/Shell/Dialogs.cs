@@ -437,6 +437,13 @@ public sealed class RunWindow : OsWindow
             "firefox" or "iexplore" or "opera" => "browser",
             "excel" or "таблица" => "spreadsheet",
             "control" => "controlpanel",
+            "regedit" or "regedit.exe" or "реестр" => "regedit",
+            "devmgmt.msc" or "devmgmt" => "devmgr",
+            "powercfg.cpl" or "powercfg" => "power",
+            "utilman" or "access.cpl" => "access",
+            "dfrg.msc" or "defrag" => "defrag",
+            "charmap" => "charmap",
+            "osk" => "access",
             "desk.cpl" or "экран" => "display",
             "bolgenos" => null,
             _ => null,
@@ -471,6 +478,8 @@ public sealed class ShutdownWindow : OsWindow
     {
         Icon = IconId.Shutdown;
         Modal = true;
+        // Turning the machine off is the machine's business, not one program's.
+        SystemModal = true;
         Resizable = false;
         Maximizable = false;
         Minimizable = false;

@@ -26,11 +26,33 @@ public abstract class OsWindow
     public bool Minimizable = true;
     public bool Maximizable = true;
     public bool ShowInTaskbar = true;
+    /// <summary>A dialog: it stops the program that raised it — the window in
+    /// <see cref="Owner"/> — and nothing else on the machine.</summary>
     public bool Modal;
+
+    /// <summary>A dialog that speaks for the whole machine rather than for one
+    /// program, and so stops every window there is. Shutting down is the case
+    /// this exists for; almost nothing else deserves it.</summary>
+    public bool SystemModal;
+
+    /// <summary>The window this dialog belongs to. Set by the manager when the
+    /// dialog opens, from whatever was in front at the time.</summary>
     public OsWindow Owner;
 
     /// <summary>Set to true to have the manager drop the window this frame.</summary>
     public bool Closed;
+
+    /// <summary>A program that runs filling the screen, over the taskbar and
+    /// with no frame around it — the way version 8 ran the programs it thought
+    /// of as its own. Toggled with F11, and set by the two that come that way.</summary>
+    public bool Immersive;
+
+    /// <summary>Where the window is growing from and when it started, so the
+    /// manager can draw it on its way there. Zero duration means "already
+    /// arrived", which is every window that is simply sitting still.</summary>
+    public Rect AnimFrom;
+    public double AnimStart = -1;
+    public double AnimLength;
 
     public MenuBar Menu;
 
@@ -57,6 +79,29 @@ public abstract class OsWindow
 
     /// <summary>Client-area painting and interaction.</summary>
     public abstract void DrawClient(UiContext c, Rect client);
+
+    /// <summary>A colour this window wants its caption painted in, or nothing
+    /// to leave it to the theme.
+    ///
+    /// Office 2013 coloured the whole window chrome after the program it was —
+    /// green for the spreadsheet, blue for the word processor — and this is how
+    /// that is asked for. It only applies while the window has the focus: an
+    /// inactive window still goes grey, because the point of the grey is to say
+    /// which window is listening.</summary>
+    public virtual Color? CaptionTint => null;
+
+    /// <summary>True for a window that paints its own strip across the caption
+    /// instead of an icon and a title — tabs in the title bar, which is where
+    /// browsers put them once they ran out of anywhere else. The manager still
+    /// draws the frame and the three buttons; everything to the left of them
+    /// belongs to the window.</summary>
+    public virtual bool CaptionTabs => false;
+
+    /// <summary>Paints that strip. Whatever the window does not claim is still
+    /// somewhere to pick the window up by, so leaving a gap at the end of the
+    /// tabs leaves the title bar draggable, exactly as it does in a real
+    /// browser.</summary>
+    public virtual void DrawCaptionTabs(UiContext c, Rect strip) { }
 
     /// <summary>Runs every frame even when the window is minimised or behind
     /// others, for animation and background work.</summary>

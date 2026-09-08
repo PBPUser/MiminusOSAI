@@ -1,17 +1,26 @@
 <Solution>
   <Project Path="Core/Miminus.Core.csproj" />
+  <Project Path="Apps/Access/Miminus.App.Access.csproj" />
   <Project Path="Apps/Browser/Miminus.App.Browser.csproj" />
   <Project Path="Apps/Calculator/Miminus.App.Calculator.csproj" />
+  <Project Path="Apps/Classic/Miminus.App.Classic.csproj" />
+  <Project Path="Apps/ControlPanel/Miminus.App.ControlPanel.csproj" />
+  <Project Path="Apps/Clock/Miminus.App.Clock.csproj" />
   <Project Path="Apps/Display/Miminus.App.Display.csproj" />
   <Project Path="Apps/Explorer/Miminus.App.Explorer.csproj" />
   <Project Path="Apps/Minesweeper/Miminus.App.Minesweeper.csproj" />
+  <Project Path="Apps/PcSettings/Miminus.App.PcSettings.csproj" />
+  <Project Path="Apps/Store/Miminus.App.Store.csproj" />
+  <Project Path="Apps/Weather/Miminus.App.Weather.csproj" />
+  <Project Path="Apps/Photos/Miminus.App.Photos.csproj" />
+  <Project Path="Apps/Notes/Miminus.App.Notes.csproj" />
   <Project Path="Apps/Notepad/Miminus.App.Notepad.csproj" />
   <Project Path="Apps/Paint/Miminus.App.Paint.csproj" />
   <Project Path="Apps/Player/Miminus.App.Player.csproj" />
   <Project Path="Apps/Presentation/Miminus.App.Presentation.csproj" />
   <Project Path="Apps/Sheet/Miminus.App.Sheet.csproj" />
   <Project Path="Apps/System/Miminus.App.System.csproj" />
-  <Project Path="Apps/Update/Miminus.App.Update.csproj" />
+  <Project Path="Apps/TaskManager/Miminus.App.TaskManager.csproj" />
   <Project Path="Apps/Utilities/Miminus.App.Utilities.csproj" />
   <Project Path="Host/MiminusOS.csproj" />
 </Solution>

@@ -24,15 +24,34 @@
   <!-- Programs are plugins: referenced only so they build first, never linked.
        The host finds them by reflection in apps/ at startup. -->
   <ItemGroup>
+    <ProjectReference Include="..\Apps\Access\Miminus.App.Access.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Apps\Browser\Miminus.App.Browser.csproj"
                       Private="false" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Apps\Calculator\Miminus.App.Calculator.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <!-- Built, but into store/ rather than apps/: the store installs it. -->
+    <ProjectReference Include="..\Apps\Clock\Miminus.App.Clock.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\Classic\Miminus.App.Classic.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\ControlPanel\Miminus.App.ControlPanel.csproj"
                       Private="false" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Apps\Display\Miminus.App.Display.csproj"
                       Private="false" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Apps\Explorer\Miminus.App.Explorer.csproj"
                       Private="false" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Apps\Minesweeper\Miminus.App.Minesweeper.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\PcSettings\Miminus.App.PcSettings.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\Store\Miminus.App.Store.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\Weather\Miminus.App.Weather.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\Photos\Miminus.App.Photos.csproj"
+                      Private="false" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Apps\Notes\Miminus.App.Notes.csproj"
                       Private="false" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Apps\Notepad\Miminus.App.Notepad.csproj"
                       Private="false" ReferenceOutputAssembly="false" />
@@ -46,7 +65,7 @@
                       Private="false" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Apps\System\Miminus.App.System.csproj"
                       Private="false" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\Apps\Update\Miminus.App.Update.csproj"
+    <ProjectReference Include="..\Apps\TaskManager\Miminus.App.TaskManager.csproj"
                       Private="false" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Apps\Utilities\Miminus.App.Utilities.csproj"
                       Private="false" ReferenceOutputAssembly="false" />
@@ -60,9 +79,16 @@
 
   <Target Name="CollectPrograms" AfterTargets="Build">
     <ItemGroup>
-      <ProgramAssembly Include="..\Apps\*\bin\$(Configuration)\$(TargetFramework)\Miminus.App.*.dll" />
+      <!-- Everything under Apps/ is a program of the system, except the ones
+           listed as packages here: those are built into store/ instead, so a
+           fresh installation does not have them and the store's «Установить»
+           button has something real to do. -->
+      <StorePackage Include="..\Apps\Clock\bin\$(Configuration)\$(TargetFramework)\Miminus.App.Clock.dll" />
+      <ProgramAssembly Include="..\Apps\*\bin\$(Configuration)\$(TargetFramework)\Miminus.App.*.dll"
+                       Exclude="@(StorePackage)" />
     </ItemGroup>
     <Copy SourceFiles="@(ProgramAssembly)" DestinationFolder="$(OutDir)apps" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(StorePackage)" DestinationFolder="$(OutDir)store" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

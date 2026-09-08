@@ -70,12 +70,17 @@ public sealed class MenuHost
     const float Gutter = 22;
     const float PadX = 6;
 
-    public void Open(List<MenuItem> items, float x, float y, object owner, UiContext c, float minWidth = 0)
+    /// <summary>Opens a menu at a point. <paramref name="above"/> makes that
+    /// point the menu's foot rather than its head, which is what a menu hanging
+    /// off a taskbar button wants: the bar is at the bottom of the screen, so
+    /// the menu has to go up from it rather than down over it.</summary>
+    public void Open(List<MenuItem> items, float x, float y, object owner, UiContext c,
+                     float minWidth = 0, bool above = false)
     {
         _stack.Clear();
         Owner = owner;
         _openedAt = c.Time;
-        Push(items, x, y, default, c, minWidth);
+        Push(items, x, y, default, c, minWidth, above);
         c.Sound(Sfx.MenuOpen, 0.5f);
     }
 
@@ -86,10 +91,15 @@ public sealed class MenuHost
         Owner = null;
     }
 
-    void Push(List<MenuItem> items, float x, float y, Rect parentItem, UiContext c, float minWidth = 0)
+    void Push(List<MenuItem> items, float x, float y, Rect parentItem, UiContext c,
+              float minWidth = 0, bool above = false)
     {
         var size = Measure(items, c);
         float w = MathF.Max(size.X, minWidth), h = size.Y;
+
+        // Growing upwards from the point given, when that is what was asked
+        // for and there is room for it.
+        if (above) y = MathF.Max(0, y - h);
 
         // Keep the popup on screen; flip rather than clamp when it would hang off.
         if (x + w > c.ScreenW) x = MathF.Max(0, parentItem.W > 0 ? parentItem.X - w : c.ScreenW - w);
@@ -222,7 +232,7 @@ public sealed class MenuHost
                 c.R.FillRect(lvl.Bounds.Offset(3, 3), c.Theme.Shadow.WithAlpha(alpha));
             c.R.FillRect(lvl.Bounds, c.Theme.MenuBack);
             c.R.DrawRect(lvl.Bounds, c.Theme.MenuBorder);
-            if (c.Theme.Id != ThemeId.Seven)
+            if (!c.Theme.Flat)
                 c.R.FillRect(new Rect(lvl.Bounds.X + 1, lvl.Bounds.Y + 1, Gutter - 2, lvl.Bounds.H - 2),
                              c.Theme.MenuGutter);
 
@@ -245,6 +255,7 @@ public sealed class MenuHost
                 {
                     c.R.FillRect(row, c.Theme.MenuHighlight);
                     if (c.Theme.Id == ThemeId.Seven) c.R.DrawRect(row, Color.Rgb(0x7DA2CE));
+                    else if (c.Theme.Id == ThemeId.Metro) c.R.FillRect(new Rect(row.X, row.Y, 3, row.H), Color.White);
                 }
 
                 Color fg = !it.Enabled ? c.Theme.TextDisabled
@@ -296,7 +307,7 @@ public sealed class MenuBar
     public void Draw(UiContext c, Rect r, MenuHost host, object ownerKey)
     {
         var t = c.Theme;
-        if (t.Id == ThemeId.Seven) c.R.FillRect(r, Color.Rgb(0xF6F6F6));
+        if (t.Flat) c.R.FillRect(r, Color.Rgb(0xF6F6F6));
         else c.R.FillRect(r, t.Face);
 
         float x = r.X + 2;
@@ -312,7 +323,7 @@ public sealed class MenuBar
             if (isOpen || hover)
             {
                 c.R.FillRect(item, isOpen ? t.MenuHighlight : t.Hot);
-                if (!isOpen && t.Id != ThemeId.Seven) c.R.DrawRect(item, t.ControlBorderHot);
+                if (!isOpen && !t.Flat) c.R.DrawRect(item, t.ControlBorderHot);
             }
 
             W.AccessLabel(c, item.X + 7, item.Y + (item.H - c.F.Ui.Height) * 0.5f, label,

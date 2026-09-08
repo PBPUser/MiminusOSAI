@@ -12,13 +12,14 @@ namespace Miminus.Apps;
 /// Everything here changes the shell for real: hiding the quick launch really
 /// removes it, auto-hide really slides the bar away and gives the space back to
 /// maximised windows, and "keep on top" is the order the layers are painted in.
-/// The one thing that does not work is the classic Start menu, which МИМИНУС
-/// never had — so it says so rather than pretending.</summary>
+/// Version 8 gave the second tab something real to do: the system now has two
+/// Start interfaces, the menu and the tile board, and the radio pair there
+/// decides which of them the Start button opens. Neither is ever taken away —
+/// the menu lists the board, and the board's app bar lists the menu.</summary>
 public sealed class TaskbarPropertiesWindow : OsWindow
 {
     readonly ShellHost _shell;
     int _tab;
-    int _startStyle;         // 0 = МИМИНУС, 1 = classic
 
     // The sheet is modal in spirit: OK applies, Cancel puts everything back.
     readonly Snapshot _entry;
@@ -26,9 +27,14 @@ public sealed class TaskbarPropertiesWindow : OsWindow
     readonly struct Snapshot
     {
         public readonly bool Lock, AutoHide, OnTop, Group, Quick, Clock, HideIcons;
+        public readonly bool StartScreen, Corners, LockScreen;
+        public readonly TaskbarEdge Edge;
+        public readonly int Size;
 
         public Snapshot(ShellSettings s)
         {
+            Edge = s.TaskbarEdge;
+            Size = s.TaskbarSize;
             Lock = s.LockTaskbar;
             AutoHide = s.AutoHideTaskbar;
             OnTop = s.TaskbarOnTop;
@@ -36,10 +42,15 @@ public sealed class TaskbarPropertiesWindow : OsWindow
             Quick = s.ShowQuickLaunch;
             Clock = s.ShowClock;
             HideIcons = s.HideInactiveIcons;
+            StartScreen = s.UseStartScreen;
+            Corners = s.HotCorners;
+            LockScreen = s.ShowLockScreen;
         }
 
         public void RestoreTo(ShellSettings s)
         {
+            s.TaskbarEdge = Edge;
+            s.TaskbarSize = Size;
             s.LockTaskbar = Lock;
             s.AutoHideTaskbar = AutoHide;
             s.TaskbarOnTop = OnTop;
@@ -47,12 +58,15 @@ public sealed class TaskbarPropertiesWindow : OsWindow
             s.ShowQuickLaunch = Quick;
             s.ShowClock = Clock;
             s.HideInactiveIcons = HideIcons;
+            s.UseStartScreen = StartScreen;
+            s.HotCorners = Corners;
+            s.ShowLockScreen = LockScreen;
         }
     }
 
     public override string Title => L.T("tbprops.title");
     public override float MinWidth => 400;
-    public override float MinHeight => 430;
+    public override float MinHeight => 500;
 
     public TaskbarPropertiesWindow(ShellHost shell)
     {
@@ -61,7 +75,7 @@ public sealed class TaskbarPropertiesWindow : OsWindow
         Icon = IconId.Settings;
         Resizable = false;
         Maximizable = false;
-        Bounds = new Rect(0, 0, 420, 452);
+        Bounds = new Rect(0, 0, 440, 520);
     }
 
     public override void OnOpened(UiContext c) => CenterOn(c.ScreenW, c.ScreenH, c.Theme.TaskbarHeight);
@@ -106,10 +120,39 @@ public sealed class TaskbarPropertiesWindow : OsWindow
         DrawPreview(c, page.CutTop(64));
         page.CutTop(10);
 
-        var box = page.CutTop(150);
+        var box = page.CutTop(182);
         W.GroupBox(c, box, L.T("tbprops.taskbar_appearance"));
         var inner = box.Deflate(12);
         inner.CutTop(12);
+
+        // Where the bar lives. It has always been draggable to any of the four
+        // sides, and this is the same choice written down — the drag and the
+        // combo set the same thing.
+        var where = inner.CutTop(26);
+        c.F.Ui.Draw(c.R, L.T("tbprops.position"), where.X, where.Y + 4, c.Theme.Text);
+
+        var edges = new List<string>
+        {
+            L.T("tbprops.edge_bottom"), L.T("tbprops.edge_top"),
+            L.T("tbprops.edge_left"), L.T("tbprops.edge_right"),
+        };
+        int edge = (int)s.TaskbarEdge;
+        if (W.ComboBox(c, Id + ".edge", new Rect(where.X + 190, where.Y, 150, 22), edges, ref edge))
+            s.TaskbarEdge = (TaskbarEdge)edge;
+
+        // How thick it is, next to where it is.
+        var size = inner.CutTop(26);
+        c.F.Ui.Draw(c.R, L.T("tbprops.size"), size.X, size.Y + 4, c.Theme.Text);
+
+        var sizes = new List<string>
+        {
+            L.T("tbprops.size_small"), L.T("tbprops.size_normal"), L.T("tbprops.size_large"),
+        };
+        int step = Math.Clamp(s.TaskbarSize, 0, 2);
+        if (W.ComboBox(c, Id + ".size", new Rect(size.X + 190, size.Y, 150, 22), sizes, ref step))
+            s.TaskbarSize = step;
+
+        inner.CutTop(4);
 
         Check(c, ref inner, ".lock", L.T("tbprops.lock_the_taskbar"), ref s.LockTaskbar);
         Check(c, ref inner, ".autohide", L.T("tbprops.auto_hide"), ref s.AutoHideTaskbar);
@@ -125,7 +168,13 @@ public sealed class TaskbarPropertiesWindow : OsWindow
         inner.CutTop(12);
 
         Check(c, ref inner, ".clock", L.T("tbprops.show_the_clock"), ref s.ShowClock);
-        Check(c, ref inner, ".hideicons", L.T("tbprops.hide_inactive_icons"), ref s.HideInactiveIcons);
+        // Hiding them all at once is a switch; moving them one at a time is a
+        // drag, and happens in the bar itself.
+        var hideRow = inner.CutTop(22);
+        bool hideAll = s.HideInactiveIcons;
+        if (W.CheckBox(c, Id + ".hideicons", new Rect(hideRow.X, hideRow.Y, hideRow.W, 20),
+                       L.T("tbprops.hide_inactive_icons"), ref hideAll))
+            s.HideInactiveIcons = hideAll;
         c.F.Small.Draw(c.R, L.T("tbprops.notification_note"), inner.X, inner.Y + 4,
                        c.Theme.TextDisabled);
     }
@@ -139,6 +188,17 @@ public sealed class TaskbarPropertiesWindow : OsWindow
 
         c.R.FillRect(frame, Color.Rgb(0x2A6099));
         c.R.DrawRect(frame, t.FieldBorder);
+
+        // A stripe on whichever side the bar is on, so the sheet says where it
+        // is going before the bar gets there.
+        var hint = s.TaskbarEdge switch
+        {
+            TaskbarEdge.Top => new Rect(frame.X + 1, frame.Y + 1, frame.W - 2, 5),
+            TaskbarEdge.Left => new Rect(frame.X + 1, frame.Y + 1, 7, frame.H - 2),
+            TaskbarEdge.Right => new Rect(frame.Right - 8, frame.Y + 1, 7, frame.H - 2),
+            _ => new Rect(frame.X + 1, frame.Bottom - 6, frame.W - 2, 5),
+        };
+        c.R.FillRect(hint, t.TaskbarMid);
 
         var bar = new Rect(frame.X + 6, frame.Bottom - 24, frame.W - 12, 18);
         c.R.FillRectV(bar, t.TaskbarTop, t.TaskbarBottom);
@@ -184,39 +244,63 @@ public sealed class TaskbarPropertiesWindow : OsWindow
     void DrawStartPage(UiContext c, Rect page)
     {
         var t = c.Theme;
+        var s = _shell.Settings;
 
-        var box = page.CutTop(126);
+        // The real choice version 8 argued about: a menu, or a screenful of
+        // tiles. Both are kept whichever way this is set — the loser is still
+        // one click away inside the winner.
+        var box = page.CutTop(150);
         W.GroupBox(c, box, L.T("tbprops.start_menu_style"));
         var inner = box.Deflate(12);
         inner.CutTop(12);
 
         var row = inner.CutTop(20);
-        if (W.Radio(c, Id + ".xp", new Rect(row.X, row.Y, row.W, 18),
-                    L.T("tbprops.miminus_start_menu"), _startStyle == 0))
-            _startStyle = 0;
-        c.F.Small.Draw(c.R, L.T("tbprops.miminus_start_menu_note"), row.X + 20, row.Y + 20, t.TextDisabled);
-        inner.CutTop(24);
+        if (W.Radio(c, Id + ".menu", new Rect(row.X, row.Y, row.W, 18),
+                    L.T("tbprops.miminus_start_menu"), !s.UseStartScreen))
+            s.UseStartScreen = false;
+        Note(c, ref inner, 20, "tbprops.miminus_start_menu_note");
 
         row = inner.CutTop(20);
-        // The classic menu is offered and refused: this OS has only ever had
-        // the one, and says so instead of pretending to switch.
-        if (W.Radio(c, Id + ".classic", new Rect(row.X, row.Y, row.W, 18),
-                    L.T("tbprops.classic_start_menu"), _startStyle == 1))
-        {
-            _shell.MessageBox(c, L.T("tbprops.title"), L.T("tbprops.classic_not_available"),
-                              MsgButtons.Ok, IconId.DlgInfo, null, Sfx.Info);
-        }
-        c.F.Small.Draw(c.R, L.T("tbprops.classic_start_menu_note"), row.X + 20, row.Y + 20, t.TextDisabled);
+        if (W.Radio(c, Id + ".screen", new Rect(row.X, row.Y, row.W, 18),
+                    L.T("tbprops.start_screen"), s.UseStartScreen))
+            s.UseStartScreen = true;
+        Note(c, ref inner, 20, "tbprops.start_screen_note");
+
+        inner.CutTop(2);
+        Note(c, ref inner, 0, "tbprops.both_note");
 
         page.CutTop(10);
 
-        var privacy = page.CutTop(96);
+        var eight = page.CutTop(112);
+        W.GroupBox(c, eight, L.T("tbprops.edges"));
+        inner = eight.Deflate(12);
+        inner.CutTop(12);
+
+        Check(c, ref inner, ".corners", L.T("pcs.hot_corners"), ref s.HotCorners);
+        Check(c, ref inner, ".lockscreen", L.T("pcs.show_lock_screen"), ref s.ShowLockScreen);
+        inner.CutTop(4);
+        Note(c, ref inner, 0, "tbprops.edges_note");
+
+        page.CutTop(10);
+
+        var privacy = page.CutTop(86);
         W.GroupBox(c, privacy, L.T("tbprops.privacy"));
         inner = privacy.Deflate(12);
         inner.CutTop(12);
         c.F.Ui.Draw(c.R, L.T("tbprops.privacy_note"), inner.X, inner.Y, t.Text);
         c.F.Small.Draw(c.R, L.T("tbprops.privacy_detail"), inner.X, inner.Y + c.F.Ui.Height + 6,
                        t.TextDisabled);
+    }
+
+    /// <summary>A grey explanatory line under a control, wrapped to whatever
+    /// room the group box has left rather than running out of the side of it.</summary>
+    static void Note(UiContext c, ref Rect area, float indent, string key)
+    {
+        foreach (string line in c.F.Small.Wrap(L.T(key), area.W - indent))
+        {
+            var row = area.CutTop(c.F.Small.Height + 1);
+            c.F.Small.Draw(c.R, line, row.X + indent, row.Y, c.Theme.TextDisabled);
+        }
     }
 
     void Check(UiContext c, ref Rect area, string id, string label, ref bool value)

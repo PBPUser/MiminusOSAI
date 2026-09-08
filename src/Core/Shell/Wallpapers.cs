@@ -18,6 +18,8 @@ public enum WallpaperId
     Space,           // starfield with a nebula
     Plaid,           // woven checked cloth
     Blueprint,       // technical grid
+    Miminus8,        // version 8: flat accent with the tile weave
+    Miminus8Dark,    // version 8: charcoal, the eight in outline
     Plain,           // flat colour
 }
 
@@ -45,6 +47,8 @@ public sealed class Wallpaper : IDisposable
         WallpaperId.Space => L.T("wall.space"),
         WallpaperId.Plaid => L.T("wall.plaid"),
         WallpaperId.Blueprint => L.T("wall.blueprint"),
+        WallpaperId.Miminus8 => L.T("wall.miminus_8_tiles"),
+        WallpaperId.Miminus8Dark => L.T("wall.miminus_8_dark"),
         _ => L.T("wall.solid_colour"),
     };
 
@@ -64,6 +68,7 @@ public sealed class WallpaperLibrary : IDisposable
 
     public IEnumerable<WallpaperId> All => new[]
     {
+        WallpaperId.Miminus8, WallpaperId.Miminus8Dark,
         WallpaperId.MiminusYellow, WallpaperId.MiminusWave, WallpaperId.Miminus7Blue,
         WallpaperId.Miminus7Dark, WallpaperId.Miminus7Green, WallpaperId.Bliss,
         WallpaperId.Azure, WallpaperId.Sunset, WallpaperId.Matrix,
@@ -134,6 +139,8 @@ public sealed class WallpaperLibrary : IDisposable
         WallpaperId.Space => BuildSpace(),
         WallpaperId.Plaid => BuildPlaid(),
         WallpaperId.Blueprint => BuildBlueprint(),
+        WallpaperId.Miminus8 => BuildMetro(false),
+        WallpaperId.Miminus8Dark => BuildMetro(true),
         _ => BuildPlain(),
     };
 
@@ -679,6 +686,99 @@ public sealed class WallpaperLibrary : IDisposable
             Texture = new Texture(W, H, px),
             Fallback = Color.Rgb(0x3A6EA5),
         };
+    }
+
+
+    /// <summary>Version 8: one flat colour and a lattice of the same colour a
+    /// shade off it.
+    ///
+    /// The backgrounds of this era stopped pretending to be photographs, so
+    /// this one does not either: a field, a weave of tiles across it, and a
+    /// slow fall of light from the top left. Everything else on the desktop is
+    /// meant to be the picture.</summary>
+    Wallpaper BuildMetro(bool dark)
+    {
+        var px = new uint[W * H];
+
+        // The accent, and the ground it sits on.
+        float br = dark ? 0.08f : 0.06f;
+        float bg = dark ? 0.09f : 0.22f;
+        float bb = dark ? 0.11f : 0.40f;
+
+        for (int y = 0; y < H; y++)
+        {
+            float v = y / (float)H;
+            for (int x = 0; x < W; x++)
+            {
+                float u = x / (float)W;
+
+                float lift = MathF.Exp(-((u - 0.18f) * (u - 0.18f) + (v - 0.10f) * (v - 0.10f)) * 2.2f);
+                float r = br + lift * (dark ? 0.10f : 0.22f);
+                float g = bg + lift * (dark ? 0.11f : 0.26f);
+                float b = bb + lift * (dark ? 0.14f : 0.30f);
+
+                // The lattice: squares of two sizes, each a touch lighter than
+                // the field, which is the whole of the pattern.
+                int cell = 64;
+                int cx = x % cell, cy = y % cell;
+                bool edge = cx < 2 || cy < 2;
+                bool block = (x / cell + y / cell) % 3 == 0 && cx > 6 && cy > 6 &&
+                             cx < cell - 6 && cy < cell - 6;
+
+                if (edge) { r += 0.030f; g += 0.034f; b += 0.040f; }
+                if (block) { r += 0.016f; g += 0.018f; b += 0.024f; }
+
+                // A little grain, so a flat field is not a flat file.
+                float n = (Noise(u * 90f, v * 90f, 61) - 0.5f) * 0.012f;
+
+                px[y * W + x] = Pack(r + n, g + n, b + n);
+            }
+        }
+
+        return new Wallpaper
+        {
+            Id = dark ? WallpaperId.Miminus8Dark : WallpaperId.Miminus8,
+            Texture = new Texture(W, H, px),
+            Fallback = dark ? Color.Rgb(0x1A1A1E) : Color.Rgb(0x1F5AA8),
+            Overlay = (c, s2) => DrawEightBranding(c, s2, dark),
+        };
+    }
+
+    /// <summary>"Миминус 8": four flat squares — no shear, no gloss, no
+    /// rounding — and the wordmark beside them.</summary>
+    static void DrawEightBranding(UiContext c, Rect s, bool dark)
+    {
+        float scale = MathF.Min(s.W / 1024f, s.H / 640f);
+        float cx = s.X + s.W * 0.62f;
+        float cy = s.Y + s.H * 0.36f;
+        float size = 150 * scale;
+        float half = size * 0.5f, gap = size * 0.06f;
+
+        var panes = new (Color col, float ox, float oy)[]
+        {
+            (Color.Rgb(0x2D89EF), -1, -1),
+            (Color.Rgb(0x00ABA9),  1, -1),
+            (Color.Rgb(0x00A300), -1,  1),
+            (Color.Rgb(0xE3A21A),  1,  1),
+        };
+
+        foreach (var (col, ox, oy) in panes)
+        {
+            float px = cx + ox * (half * 0.5f + gap * 0.5f);
+            float py = cy + oy * (half * 0.5f + gap * 0.5f);
+            c.R.FillRect(new Rect(px - half * 0.5f, py - half * 0.5f, half - gap, half - gap),
+                         col.WithAlpha((byte)(dark ? 235 : 250)));
+        }
+
+        string word = L.T("wall.miminus_8");
+        var f = c.F.Big;
+        float tw = f.Measure(word);
+        float tx = cx + size * 0.72f;
+        float ty = cy - f.Height * 0.5f;
+        if (tx + tw > s.Right - 20) tx = s.Right - 20 - tw;
+
+        f.Draw(c.R, word, tx + 2, ty + 2, Color.Rgba(0x000000, 110));
+        f.Draw(c.R, word, tx, ty, Color.White);
     }
 
     /// <summary>"Миминус 7" logo: the four-pane flag in perspective plus the

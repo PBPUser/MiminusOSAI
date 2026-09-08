@@ -5,8 +5,8 @@ using Miminus.Platform;
 namespace Miminus.UI;
 
 /// <summary>The typefaces the shell draws with. Two families are baked — Tahoma
-/// for the XP themes and Segoe UI for "Миминус 7" — and <see cref="Use"/> picks
-/// between them when the theme changes.</summary>
+/// for the XP themes and Segoe UI for "Миминус 7" and "Миминус 8" — and
+/// <see cref="Use"/> picks between them when the theme changes.</summary>
 public sealed class Fonts : IDisposable
 {
     readonly Font _tahoma, _tahomaBold, _tahomaSmall;
@@ -47,7 +47,7 @@ public sealed class Fonts : IDisposable
 
     public void Use(ThemeId id)
     {
-        bool seven = id == ThemeId.Seven;
+        bool seven = id is ThemeId.Seven or ThemeId.Metro;
         Ui = seven ? _segoe : _tahoma;
         UiBold = seven ? _segoeBold : _tahomaBold;
         Small = seven ? _segoeSmall : _tahomaSmall;

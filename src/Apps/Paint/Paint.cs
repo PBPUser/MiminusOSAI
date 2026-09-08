@@ -8,8 +8,14 @@ using Miminus.UI;
 namespace Miminus.Apps;
 
 /// <summary>Paint — the image editor. Part 2 opens Paint.NET on Эфрате.jpeg and
-/// scribbles lines over it; this does the same job with a tool box, a colour
-/// wheel palette and a real editable bitmap.</summary>
+/// scribbles lines over it; this does the same job on a real editable bitmap.
+///
+/// It wears the face Windows 7 gave Paint: the menu bar is gone and a ribbon
+/// stands in its place, with the blue «Файл» tab, the tools gathered into named
+/// groups, the palette laid out as two rows of squares beside the two current
+/// colours, and a status bar along the foot carrying the pointer position, the
+/// image size and a zoom slider. The colour wheel from the older layout is
+/// still there — it is what «Изменение цветов» opens, as it was.</summary>
 public sealed class PaintWindow : OsWindow
 {
     enum Tool { Pencil, Brush, Eraser, Line, Rectangle, Ellipse, Fill, Picker }
@@ -43,64 +49,19 @@ public sealed class PaintWindow : OsWindow
         Bounds = new Rect(0, 0, 760, 560);
 
         _bitmap = LoadInto(_file) ?? new Bitmap(480, 360);
-
-        BuildMenu();
     }
 
-    void BuildMenu()
-    {
-        Menu = new MenuBar();
+    /// <summary>Which ribbon tab is showing, and whether the ribbon is rolled
+    /// up — the two pieces of state the strip needs.</summary>
+    int _ribbonTab;
+    bool _ribbonCollapsed;
 
-        Menu.Add(L.T("paint.file"), () => new List<MenuItem>
-        {
-            MenuItem.Of(L.T("paint.new"), () => { PushUndo(); _bitmap.RectFilled(0, 0, _bitmap.Width, _bitmap.Height, 0xFFFFFFFF); _bitmap.Invalidate(); }),
-            MenuItem.Of(L.T("paint.open"), OpenPicture),
-            MenuItem.Of(L.T("paint.save"), Save, shortcut: "Ctrl+S"),
-            MenuItem.Sep(),
-            MenuItem.Of(L.T("paint.set_as_wallpaper"), () =>
-            {
-                Shell.SetWallpaper(WallpaperId.MiminusYellow);
-                _ctx.Sound(Sfx.Navigate, 0.6f);
-            }, IconId.Display),
-            MenuItem.Sep(),
-            MenuItem.Of(L.T("paint.exit"), Close),
-        });
+    /// <summary>Set while the colour wheel is showing. Seven kept it behind
+    /// «Изменение цветов» rather than on the ribbon, and so does this.</summary>
+    bool _wheelOpen;
 
-        Menu.Add(L.T("paint.edit"), () => new List<MenuItem>
-        {
-            MenuItem.Of(L.T("paint.undo"), Undo, shortcut: "Ctrl+Z", enabled: _undo.Count > 0),
-            MenuItem.Sep(),
-            MenuItem.Of(L.T("paint.clear_image"), () =>
-            {
-                PushUndo();
-                _bitmap.RectFilled(0, 0, _bitmap.Width, _bitmap.Height, _secondary);
-                _bitmap.Invalidate();
-            }),
-        });
-
-        Menu.Add(L.T("paint.view"), () => new List<MenuItem>
-        {
-            new() { Text = "50%", IsRadio = true, Checked = MathF.Abs(_zoom - 0.5f) < 0.01f, Click = () => _zoom = 0.5f },
-            new() { Text = "100%", IsRadio = true, Checked = MathF.Abs(_zoom - 1f) < 0.01f, Click = () => _zoom = 1f },
-            new() { Text = "200%", IsRadio = true, Checked = MathF.Abs(_zoom - 2f) < 0.01f, Click = () => _zoom = 2f },
-            new() { Text = "400%", IsRadio = true, Checked = MathF.Abs(_zoom - 4f) < 0.01f, Click = () => _zoom = 4f },
-        });
-
-        Menu.Add(L.T("paint.effe_cts"), () => new List<MenuItem>
-        {
-            MenuItem.Of(L.T("paint.black_and_white"), () => Effect(GrayScale)),
-            MenuItem.Of(L.T("paint.invert_colors"), () => Effect(Invert), shortcut: "Ctrl+I"),
-            MenuItem.Of(L.T("paint.blur"), () => Effect(Blur)),
-        });
-
-        Menu.Add(L.T("paint.help"), () => new List<MenuItem>
-        {
-            MenuItem.Of(L.T("paint.about"), () =>
-                Shell.MessageBox(_ctx, L.T("paint.title"),
-                    L.T("paint.zevshte_about"),
-                    MsgButtons.Ok, IconId.Paint, null, Sfx.Info), IconId.DlgInfo),
-        });
-    }
+    /// <summary>Where the pointer last was on the image, for the status bar.</summary>
+    int _cursorX = -1, _cursorY = -1;
 
     /// <summary>Builds the canvas for a node: a real file from a mount when we
     /// can decode it, otherwise the procedurally generated stand-in.</summary>
@@ -234,16 +195,17 @@ public sealed class PaintWindow : OsWindow
     public override void DrawClient(UiContext c, Rect client)
     {
         _ctx = c;
-        c.R.FillRect(client, c.Theme.Face);
+        c.R.FillRect(client, Color.Rgb(0xF0F0F0));
 
         var area = client;
-        var status = area.CutBottom(20);
-        var tools = area.CutLeft(52);
-        var palette = area.CutBottom(64);
+        DrawRibbonTabs(c, area.CutTop(26));
+        if (!_ribbonCollapsed) DrawRibbon(c, area.CutTop(96));
 
-        DrawToolbox(c, tools);
-        DrawPalette(c, palette);
+        var status = area.CutBottom(24);
+
         DrawCanvas(c, area, status);
+        DrawStatusBar(c, status);
+        DrawColourWheel(c, client);
 
         if (!c.KeyboardHandled && c.In.Ctrl)
         {
@@ -253,53 +215,330 @@ public sealed class PaintWindow : OsWindow
         }
     }
 
-    void DrawToolbox(UiContext c, Rect box)
-    {
-        c.R.FillRectV(box, Color.Rgb(0xF4F4F4), c.Theme.Face);
-        c.R.FillRect(new Rect(box.Right - 1, box.Y, 1, box.H), c.Theme.ControlBorder);
 
+    // ---- лента (the seven ribbon) -------------------------------------------
+
+    void DrawRibbonTabs(UiContext c, Rect bar)
+    {
+        c.R.FillRect(bar, Color.Rgb(0xF5F5F5));
+        c.R.FillRect(new Rect(bar.X, bar.Bottom - 1, bar.W, 1), Color.Rgb(0xD8D8D8));
+
+        // The quick-access buttons seven put in the title bar; there is no room
+        // up there, so they live at the head of the tab strip.
+        float x = bar.X + 4;
+        foreach (var (save, key, action, enabled) in new (bool, string, Action, bool)[]
+                 {
+                     (true, "paint.save", Save, true),
+                     (false, "paint.undo", Undo, _undo.Count > 0),
+                 })
+        {
+            var q = new Rect(x, bar.Y + 3, 20, bar.H - 6);
+            bool hot = enabled && c.Hovering(q);
+            if (hot) c.R.FillRect(q, Color.Rgb(0xE8F1FB));
+
+            Color ink = enabled ? Color.Rgb(0x2A4A6A) : Color.Rgb(0xB0B0B0);
+            var g = q.Deflate(4);
+            if (save)
+            {
+                // A diskette, which is what saving still looks like.
+                c.R.FillRect(g, ink);
+                c.R.FillRect(new Rect(g.X + 3, g.Y, g.W - 6, g.H * 0.42f), Color.White);
+                c.R.FillRect(new Rect(g.X + 2, g.Bottom - g.H * 0.42f, g.W - 4, g.H * 0.36f),
+                             Color.White);
+            }
+            else
+            {
+                // The undo arrow: a hook back to the left.
+                c.R.Line(g.X + 1, g.CenterY + 2, g.Right - 2, g.CenterY + 2, ink, 1.8f);
+                c.R.Line(g.Right - 2, g.CenterY + 2, g.Right - 2, g.Y + 1, ink, 1.8f);
+                c.R.FillTriangle(g.X, g.CenterY + 2, g.X + 5, g.CenterY - 2,
+                                 g.X + 5, g.CenterY + 6, ink);
+            }
+
+            c.Tooltip(q, L.T(key));
+            if (enabled && c.Clicked(q)) action();
+            x += 22;
+        }
+        c.R.FillRect(new Rect(x + 2, bar.Y + 5, 1, bar.H - 10), Color.Rgb(0xD8D8D8));
+        x += 8;
+
+        string[] tabs = { "paint.file", "paint.home", "paint.view" };
+        for (int i = 0; i < tabs.Length; i++)
+        {
+            string label = W.StripAccess(L.T(tabs[i]));
+            var tab = new Rect(x, bar.Y, c.F.Ui.Measure(label) + 26, bar.H);
+            bool file = i == 0;
+            bool sel = !file && i == _ribbonTab && !_ribbonCollapsed;
+
+            if (file) c.R.FillRect(tab, Color.Rgb(0x2D89EF));
+            else if (sel) c.R.FillRect(tab, Color.White);
+            else if (c.Hovering(tab)) c.R.FillRect(tab, Color.Rgb(0xE8F1FB));
+            if (sel) c.R.FillRect(new Rect(tab.X, tab.Y, tab.W, 2), Color.Rgb(0x2D89EF));
+
+            c.F.Ui.DrawCentered(c.R, label, tab, file ? Color.White : c.Theme.Text);
+
+            if (c.Clicked(tab))
+            {
+                if (file) ShowFileMenu(c, tab);
+                else if (i == _ribbonTab) _ribbonCollapsed = !_ribbonCollapsed;
+                else { _ribbonTab = i; _ribbonCollapsed = false; }
+                c.SoundAt(Sfx.Click, tab, 0.4f);
+            }
+            x = tab.Right;
+        }
+
+        var chevron = new Rect(bar.Right - 22, bar.Y + 4, 18, bar.H - 8);
+        if (c.Hovering(chevron)) c.R.FillRect(chevron, Color.Rgb(0xE8F1FB));
+        W.Arrow(c, chevron, _ribbonCollapsed ? 2 : 0, c.Theme.Text);
+        if (c.Clicked(chevron)) _ribbonCollapsed = !_ribbonCollapsed;
+    }
+
+    void ShowFileMenu(UiContext c, Rect anchor)
+    {
+        Shell.Menus.Open(new List<MenuItem>
+        {
+            MenuItem.Of(L.T("paint.new"), NewImage, IconId.ImageFile),
+            MenuItem.Of(L.T("paint.open"), OpenPicture, IconId.FolderOpen),
+            MenuItem.Of(L.T("paint.save"), Save, IconId.TextFile, "Ctrl+S"),
+            MenuItem.Sep(),
+            MenuItem.Of(L.T("paint.set_as_wallpaper"), () =>
+            {
+                Shell.SetWallpaper(WallpaperId.MiminusYellow);
+                _ctx.Sound(Sfx.Navigate, 0.6f);
+            }, IconId.Display),
+            MenuItem.Sep(),
+            MenuItem.Of(L.T("paint.about"), () =>
+                Shell.MessageBox(_ctx, L.T("paint.title"), L.T("paint.zevshte_about"),
+                    MsgButtons.Ok, IconId.Paint, null, Sfx.Info), IconId.DlgInfo),
+            MenuItem.Of(L.T("paint.exit"), Close),
+        }, anchor.X, anchor.Bottom, this, c);
+    }
+
+    void NewImage()
+    {
+        PushUndo();
+        _bitmap.RectFilled(0, 0, _bitmap.Width, _bitmap.Height, 0xFFFFFFFF);
+        _bitmap.Invalidate();
+    }
+
+    void DrawRibbon(UiContext c, Rect ribbon)
+    {
+        c.R.FillRect(ribbon, Color.White);
+        c.R.FillRect(new Rect(ribbon.X, ribbon.Bottom - 1, ribbon.W, 1), Color.Rgb(0xD8D8D8));
+
+        var area = ribbon.Deflate(6, 4, 6, 18);
+        if (_ribbonTab == 2) DrawViewTab(c, ribbon, area);
+        else DrawHomeTab(c, ribbon, area);
+    }
+
+    /// <summary>«Главная»: everything that changes the picture.</summary>
+    void DrawHomeTab(UiContext c, Rect ribbon, Rect area)
+    {
+        // ---- изображение ----------------------------------------------------
+        var group = RibbonGroup(c, ribbon, ref area, 164, "paint.group_image");
+        if (RibbonBig(c, group.CutLeft(78), IconId.ImageFile, "paint.clear_image"))
+        {
+            PushUndo();
+            _bitmap.RectFilled(0, 0, _bitmap.Width, _bitmap.Height, _secondary);
+            _bitmap.Invalidate();
+        }
+        if (RibbonBig(c, group.CutLeft(78), IconId.FolderOpen, "paint.undo", _undo.Count > 0))
+            Undo();
+
+        // ---- инструменты ----------------------------------------------------
+        group = RibbonGroup(c, ribbon, ref area, 150, "paint.group_tools");
         var tools = new (Tool tool, string tip)[]
         {
-            (Tool.Pencil, "paint.pencil"),
-            (Tool.Brush, "paint.brush"),
-            (Tool.Eraser, "paint.eraser"),
-            (Tool.Line, "paint.line"),
-            (Tool.Rectangle, "paint.rectangle"),
-            (Tool.Ellipse, "paint.ellipse"),
-            (Tool.Fill, "paint.paint_bucket"),
-            (Tool.Picker, "paint.color_picker"),
+            (Tool.Pencil, "paint.pencil"), (Tool.Brush, "paint.brush"),
+            (Tool.Eraser, "paint.eraser"), (Tool.Fill, "paint.paint_bucket"),
+            (Tool.Line, "paint.line"), (Tool.Rectangle, "paint.rectangle"),
+            (Tool.Ellipse, "paint.ellipse"), (Tool.Picker, "paint.color_picker"),
         };
-
-        float bs = 22, gap = 3;
         for (int i = 0; i < tools.Length; i++)
         {
-            var (tool, tip) = tools[i];
-            var r = new Rect(box.X + 3 + (i % 2) * (bs + gap), box.Y + 4 + (i / 2) * (bs + gap), bs, bs);
-            bool active = _tool == tool;
-            bool hover = c.Hovering(r);
+            var r = new Rect(group.X + (i % 4) * 34, group.Y + 6 + (i / 4) * 30, 30, 28);
+            bool active = _tool == tools[i].tool;
+            bool hot = c.Hovering(r);
 
-            W.DrawButtonFace(c, r, true, hover, active);
-            DrawToolGlyph(c, tool, r.Deflate(4));
-            c.Tooltip(r, L.T(tip));
-            if (c.Clicked(r)) { _tool = tool; c.SoundAt(Sfx.Click, r, 0.4f); }
+            if (active) c.R.FillRect(r, Color.Rgb(0xCFE4F7));
+            else if (hot) c.R.FillRect(r, Color.Rgb(0xE8F1FB));
+            if (active || hot) c.R.DrawRect(r, Color.Rgb(0x3C7FB1));
+
+            DrawToolGlyph(c, tools[i].tool, r.Deflate(7));
+            c.Tooltip(r, L.T(tools[i].tip));
+            if (c.Clicked(r)) { _tool = tools[i].tool; c.SoundAt(Sfx.Click, r, 0.4f); }
         }
 
-        // Brush size ramp.
-        float sy = box.Y + 4 + 4 * (bs + gap) + 8;
-        c.F.Small.Draw(c.R, L.T("paint.size"), box.X + 4, sy, c.Theme.Text);
-        sy += c.F.Small.Height + 3;
-        for (int i = 0; i < 5; i++)
+        // ---- толщина --------------------------------------------------------
+        group = RibbonGroup(c, ribbon, ref area, 84, "paint.group_size");
+        for (int i = 0; i < 4; i++)
         {
             int size = i == 0 ? 1 : i * 3;
-            var r = new Rect(box.X + 5, sy + i * 18, box.W - 12, 16);
+            var r = new Rect(group.X + 4, group.Y + 4 + i * 15, group.W - 12, 14);
             bool active = _size == size;
-            if (active) c.R.FillRect(r, c.Theme.Selection);
-            else if (c.Hovering(r)) c.R.FillRect(r, c.Theme.Hot.WithAlpha((byte)80));
-            c.R.FillRect(new Rect(r.X + 4, r.CenterY - MathF.Max(1, size * 0.5f) * 0.5f,
-                                  r.W - 8, MathF.Max(1, size * 0.6f)),
-                         active ? Color.White : Color.Black);
+
+            if (active) c.R.FillRect(r, Color.Rgb(0xCFE4F7));
+            else if (c.Hovering(r)) c.R.FillRect(r, Color.Rgb(0xE8F1FB));
+            if (active) c.R.DrawRect(r, Color.Rgb(0x3C7FB1));
+
+            c.R.FillRect(new Rect(r.X + 6, r.CenterY - MathF.Max(1, size * 0.6f) * 0.5f,
+                                  r.W - 12, MathF.Max(1, size * 0.6f)), Color.Rgb(0x202020));
             if (c.Clicked(r)) { _size = size; c.SoundAt(Sfx.Tick, r, 0.3f); }
         }
+
+        // ---- цвета ----------------------------------------------------------
+        group = RibbonGroup(c, ribbon, ref area, MathF.Max(190, area.W), "paint.group_colours");
+
+        // The two current colours, one behind the other, as seven drew them.
+        var sec = new Rect(group.X + 14, group.Y + 20, 26, 26);
+        var pri = new Rect(group.X + 2, group.Y + 8, 26, 26);
+        c.R.FillRect(sec, FromPacked(_secondary));
+        c.R.DrawRect(sec, Color.Rgb(0x808080));
+        c.R.FillRect(pri, FromPacked(_primary));
+        c.R.DrawRect(pri, Color.Rgb(0x404040));
+        c.Tooltip(pri, L.T("paint.primary_colour"));
+        c.Tooltip(sec, L.T("paint.secondary_colour"));
+        if (c.Clicked(sec)) (_primary, _secondary) = (_secondary, _primary);
+
+        // Two rows of squares, which is the palette.
+        float px = group.X + 56;
+        for (int i = 0; i < Palette.Length; i++)
+        {
+            var sw = new Rect(px + (i % 10) * 17, group.Y + 6 + (i / 10) * 19, 15, 17);
+            if (sw.Right > group.Right - 60) continue;
+
+            c.R.FillRect(sw, FromPacked(Palette[i]));
+            c.R.DrawRect(sw, c.Hovering(sw) ? Color.Rgb(0x3C7FB1) : Color.Rgb(0x909090));
+
+            if (c.Clicked(sw)) { _primary = Palette[i]; c.SoundAt(Sfx.Click, sw, 0.35f); }
+            else if (c.RightClicked(sw)) _secondary = Palette[i];
+        }
+
+        var more = new Rect(group.Right - 56, group.Y + 8, 52, 34);
+        if (RibbonBig(c, more, IconId.Paint, "paint.edit_colours")) _wheelOpen = !_wheelOpen;
+    }
+
+    /// <summary>«Вид»: the zoom, and nothing else — there is nothing else.</summary>
+    void DrawViewTab(UiContext c, Rect ribbon, Rect area)
+    {
+        var group = RibbonGroup(c, ribbon, ref area, 250, "paint.group_zoom");
+        foreach (float zoom in new[] { 0.5f, 1f, 2f, 4f })
+        {
+            var r = group.CutLeft(60);
+            bool active = MathF.Abs(_zoom - zoom) < 0.01f;
+            if (RibbonBig(c, r, IconId.Search, null, true, active,
+                          (zoom * 100).ToString("0") + "%"))
+                _zoom = zoom;
+        }
+    }
+
+    /// <summary>Cuts one titled group out of the ribbon, draws its name under it
+    /// and the hairline after it.</summary>
+    Rect RibbonGroup(UiContext c, Rect ribbon, ref Rect area, float width, string titleKey)
+    {
+        var group = area.CutLeft(MathF.Min(width, MathF.Max(0, area.W)));
+
+        c.F.Small.DrawCentered(c.R, L.T(titleKey),
+                               new Rect(group.X, ribbon.Bottom - 17, group.W, 14),
+                               c.Theme.TextDisabled);
+        c.R.FillRect(new Rect(group.Right + 1, ribbon.Y + 6, 1, ribbon.H - 14), Color.Rgb(0xE4E4E4));
+        area.CutLeft(4);
+        return group;
+    }
+
+    /// <summary>A ribbon button: picture over caption.</summary>
+    bool RibbonBig(UiContext c, Rect r, IconId icon, string key, bool enabled = true,
+                   bool active = false, string literal = null)
+    {
+        bool hover = enabled && c.Hovering(r);
+        bool clicked = enabled && c.Clicked(r);
+
+        if (active) c.R.FillRect(r, Color.Rgb(0xCFE4F7));
+        if (hover) c.R.FillRect(r, Color.Rgb(0xE8F1FB));
+        if (hover || active) c.R.DrawRect(r, Color.Rgb(0x3C7FB1));
+
+        var ic = new Rect(r.CenterX - 14, r.Y + 4, 28, 28);
+        Icons.Draw(c.R, icon, ic);
+        if (!enabled) c.R.FillRect(ic, Color.Rgba(0xFFFFFF, 150));
+
+        c.R.PushClip(r);
+        string label = literal ?? L.T(key);
+        foreach (string line in c.F.Small.Wrap(label, r.W - 4).Take(2))
+        {
+            float w = c.F.Small.Measure(line);
+            c.F.Small.Draw(c.R, line, r.CenterX - w * 0.5f, ic.Bottom + 2,
+                           enabled ? c.Theme.Text : c.Theme.TextDisabled);
+            ic = new Rect(ic.X, ic.Y + c.F.Small.Height, ic.W, ic.H);
+        }
+        c.R.PopClip();
+
+        if (clicked) c.SoundAt(Sfx.Click, r, 0.45f);
+        return clicked;
+    }
+
+    /// <summary>The twenty squares of the palette, in seven's two rows.</summary>
+    static readonly uint[] Palette =
+    {
+        // Packed 0xAABBGGRR, like every other colour in the pipeline.
+        0xFF000000, 0xFF404040, 0xFF808080, 0xFFC0C0C0, 0xFFFFFFFF,
+        0xFF202080, 0xFF2020E0, 0xFF2060F0, 0xFF20A0F0, 0xFF20D0FF,
+        0xFF206020, 0xFF20A020, 0xFF20E020, 0xFF80E080, 0xFF20E0E0,
+        0xFFC02020, 0xFFE06020, 0xFFE0A020, 0xFF802080, 0xFFE020E0,
+    };
+
+    // ---- the colour wheel, behind «Изменение цветов» -------------------------
+
+    void DrawColourWheel(UiContext c, Rect client)
+    {
+        if (!_wheelOpen) return;
+
+        var panel = new Rect(client.Right - 210, client.Y + 122, 200, 150);
+        panel.X = MathF.Max(client.X + 4, panel.X);
+
+        c.R.FillRect(panel.Offset(3, 3), Color.Rgba(0x000000, 60));
+        c.R.FillRect(panel, Color.Rgb(0xF7F7F7));
+        c.R.DrawRect(panel, Color.Rgb(0xA0A0A0));
+
+        var head = panel.Deflate(8, 6, 8, 0).CutTop(18);
+        c.F.UiBold.Draw(c.R, L.T("paint.edit_colours"), head.X, head.Y, Color.Rgb(0x1A1A1A));
+
+        var wheel = new Rect(panel.X + 12, head.Bottom + 6, 100, 100);
+        DrawWheel(c, wheel);
+
+        var preview = new Rect(wheel.Right + 16, wheel.Y + 8, 60, 40);
+        c.R.FillRect(preview, FromPacked(_primary));
+        c.R.DrawRect(preview, Color.Rgb(0x606060));
+
+        var close = new Rect(wheel.Right + 16, preview.Bottom + 10, 60, 22);
+        if (W.Button(c, Id + ".wheelok", close, L.T("win.ok"))) _wheelOpen = false;
+
+        bool outside = !panel.Contains(c.MouseX, c.MouseY);
+        if (c.In.Pressed(MouseButton.Left) && outside && !c.MouseHandled) _wheelOpen = false;
+    }
+
+    // ---- status bar ----------------------------------------------------------
+
+    /// <summary>The strip seven put along the foot: where the pointer is on the
+    /// image, how big the image is, and the zoom.</summary>
+    void DrawStatusBar(UiContext c, Rect r)
+    {
+        c.R.FillRect(r, Color.Rgb(0xF0F0F0));
+        c.R.FillRect(new Rect(r.X, r.Y, r.W, 1), Color.Rgb(0xE0E0E0));
+
+        string position = _cursorX >= 0 ? _cursorX + ", " + _cursorY : "—";
+        c.F.Small.Draw(c.R, position, r.X + 10, r.CenterY - c.F.Small.Height * 0.5f,
+                       Color.Rgb(0x404040));
+        c.F.Small.Draw(c.R, _bitmap.Width + " × " + _bitmap.Height, r.X + 110,
+                       r.CenterY - c.F.Small.Height * 0.5f, Color.Rgb(0x404040));
+
+        // The zoom slider, at the right end where it belongs.
+        var slider = new Rect(r.Right - 140, r.CenterY - 8, 100, 16);
+        float zoom = _zoom;
+        if (W.Slider(c, Id + ".zoom", slider, ref zoom, 0.25f, 4f))
+            _zoom = MathF.Round(zoom * 4) / 4;
+
+        c.F.Small.Draw(c.R, (_zoom * 100).ToString("0") + "%", slider.Right + 8,
+                       r.CenterY - c.F.Small.Height * 0.5f, Color.Rgb(0x404040));
     }
 
     void DrawToolGlyph(UiContext c, Tool tool, Rect r)
@@ -339,74 +578,24 @@ public sealed class PaintWindow : OsWindow
         }
     }
 
-    void DrawPalette(UiContext c, Rect pal)
+    /// <summary>The colour wheel, which is the same picture the old palette
+    /// strip carried: a hue ring built once into a texture and sampled where it
+    /// is clicked. Dragging across it picks continuously.</summary>
+    void DrawWheel(UiContext c, Rect wr)
     {
-        c.R.FillRectV(pal, Color.Rgb(0xF4F4F4), c.Theme.Face);
-        c.R.FillRect(new Rect(pal.X, pal.Y, pal.W, 1), c.Theme.ControlBorder);
-        var area = pal.Deflate(6, 5, 6, 5);
-
-        // Current primary / secondary swatches.
-        var swatches = area.CutLeft(46);
-        var sec = new Rect(swatches.X + 14, swatches.Y + 14, 24, 24);
-        var pri = new Rect(swatches.X + 2, swatches.Y + 2, 24, 24);
-        c.R.FillRect(sec, FromPacked(_secondary));
-        c.R.DrawRect(sec, Color.Black);
-        c.R.FillRect(pri, FromPacked(_primary));
-        c.R.DrawRect(pri, Color.Black);
-        c.Tooltip(pri, L.T("paint.primary_colour"));
-        c.Tooltip(sec, L.T("paint.secondary_colour"));
-        if (c.Clicked(sec)) (_primary, _secondary) = (_secondary, _primary);
-
-        // Colour wheel.
-        var wheelRect = area.CutLeft(52);
         _wheel ??= BuildWheel(64);
-        var wr = new Rect(wheelRect.X, wheelRect.CenterY - 24, 48, 48);
         c.R.DrawTexture(_wheel, wr);
-        if (c.Hovering(wr))
-        {
-            c.Cursor = CursorShape.Cross;
-            if (c.In.IsDown(MouseButton.Left))
-            {
-                int px = (int)((c.MouseX - wr.X) / wr.W * 64);
-                int py = (int)((c.MouseY - wr.Y) / wr.H * 64);
-                uint col = WheelPixel(px, py, 64);
-                if ((col >> 24) > 0) _primary = col;
-                c.MouseHandled = true;
-            }
-        }
 
-        // Standard swatch grid.
-        uint[] row1 =
-        {
-            0xFF000000, 0xFF404040, 0xFF808080, 0xFFC0C0C0, 0xFFFFFFFF,
-            0xFF000080, 0xFF0000FF, 0xFF00FFFF, 0xFF008000, 0xFF00FF00,
-        };
-        uint[] row2 =
-        {
-            0xFF004080, 0xFF0080FF, 0xFF00D2FF, 0xFF008080, 0xFF80FF80,
-            0xFF800080, 0xFFFF00FF, 0xFF8000FF, 0xFF404080, 0xFF80C0FF,
-        };
-        float cell = 16, gap = 2;
-        for (int i = 0; i < row1.Length; i++)
-        {
-            Swatch(c, new Rect(area.X + i * (cell + gap), area.Y + 4, cell, cell), row1[i]);
-            Swatch(c, new Rect(area.X + i * (cell + gap), area.Y + 4 + cell + gap, cell, cell), row2[i]);
-        }
+        if (!c.Hovering(wr)) return;
 
-        // Live RGB readout.
-        float rx = area.X + row1.Length * (cell + gap) + 12;
-        var col2 = FromPacked(_primary);
-        c.F.Small.Draw(c.R, $"R {col2.R}", rx, area.Y + 2, c.Theme.Text);
-        c.F.Small.Draw(c.R, $"G {col2.G}", rx, area.Y + 2 + c.F.Small.Height + 1, c.Theme.Text);
-        c.F.Small.Draw(c.R, $"B {col2.B}", rx, area.Y + 2 + (c.F.Small.Height + 1) * 2, c.Theme.Text);
-    }
+        c.Cursor = CursorShape.Cross;
+        if (!c.In.IsDown(MouseButton.Left)) return;
 
-    void Swatch(UiContext c, Rect r, uint col)
-    {
-        c.R.FillRect(r, FromPacked(col));
-        c.R.DrawRect(r, c.Hovering(r) ? Color.White : Color.Rgb(0x808080));
-        if (c.Clicked(r)) { _primary = col; c.SoundAt(Sfx.Tick, r, 0.3f); }
-        else if (c.RightClicked(r)) { _secondary = col; c.SoundAt(Sfx.Tick, r, 0.3f); }
+        int px = (int)((c.MouseX - wr.X) / wr.W * 64);
+        int py = (int)((c.MouseY - wr.Y) / wr.H * 64);
+        uint col = WheelPixel(px, py, 64);
+        if ((col >> 24) > 0) _primary = col;
+        c.MouseHandled = true;
     }
 
     static Color FromPacked(uint p)

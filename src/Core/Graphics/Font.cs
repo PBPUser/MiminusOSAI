@@ -44,6 +44,32 @@ public sealed unsafe class Font : IDisposable
     static FontSmoothing _smoothing = FontSmoothing.Standard;
 
     /// <summary>Global glyph smoothing. Changing it re-rasterises every font.</summary>
+    static float _deviceScale = 1;
+
+    /// <summary>How many device pixels there are per logical unit.
+    ///
+    /// Layout is done in logical units, which is what lets the DPI setting make
+    /// every window and control bigger without a single measurement changing.
+    /// Text cannot simply be magnified with them, though: a glyph is a texture,
+    /// and stretching it is what blurring looks like. So the glyph is baked at
+    /// the device size and drawn at the logical one — a 144-DPI system rasterises
+    /// its 11-pixel Tahoma at 16 real pixels and puts it in an 11-unit box.</summary>
+    public static float DeviceScale
+    {
+        get => _deviceScale;
+        set
+        {
+            float scale = Math.Clamp(value, 0.5f, 4f);
+            if (MathF.Abs(scale - _deviceScale) < 0.001f) return;
+
+            _deviceScale = scale;
+
+            // Every glyph in the atlas was baked at the old size.
+            GlyphAtlas.Shared.Reset();
+            foreach (var f in All) f.RebuildForDevice();
+        }
+    }
+
     public static FontSmoothing Smoothing
     {
         get => _smoothing;
@@ -76,10 +102,16 @@ public sealed unsafe class Font : IDisposable
     int _scratchW, _scratchH;
 
     public string Face { get; }
+
+    /// <summary>Size the face is asked for, in logical units.</summary>
     public int PixelHeight { get; }
-    public int Height { get; }      // full line height
-    public int Ascent { get; }
-    public int Descent { get; }
+
+    public int Height { get; private set; }      // full line height, logical
+    public int Ascent { get; private set; }
+    public int Descent { get; private set; }
+
+    /// <summary>Size the glyphs are actually baked at, in device pixels.</summary>
+    int DevicePixelHeight => Math.Max(1, (int)MathF.Round(PixelHeight * _deviceScale));
     public bool Bold { get; }
 
     /// <summary>Extra pixels inserted between characters. XP's Tahoma rendering is
@@ -105,13 +137,25 @@ public sealed unsafe class Font : IDisposable
         Win32.SetTextColor(_hdc, 0x00FFFFFF);
         Win32.SetBkColor(_hdc, 0x00000000);
 
+        MeasureFace();
+
+        All.Add(this);
+    }
+
+    /// <summary>Reads the metrics of the current GDI font and makes a scratch
+    /// surface big enough to draw any one glyph of it. Called again whenever the
+    /// face is rebuilt at a new size.</summary>
+    void MeasureFace()
+    {
         Win32.GetTextMetricsW(_hdc, out var tm);
-        Height = tm.tmHeight;
-        Ascent = tm.tmAscent;
-        Descent = tm.tmDescent;
+
+        // Layout works in logical units, so the device metrics come back down.
+        Height = (int)MathF.Round(tm.tmHeight / _deviceScale);
+        Ascent = (int)MathF.Round(tm.tmAscent / _deviceScale);
+        Descent = (int)MathF.Round(tm.tmDescent / _deviceScale);
 
         // Scratch surface large enough for the widest glyph plus antialiasing bleed.
-        _scratchW = Math.Max(tm.tmMaxCharWidth * 2 + 16, pixelHeight * 3 + 16);
+        _scratchW = Math.Max(tm.tmMaxCharWidth * 2 + 16, DevicePixelHeight * 3 + 16);
         _scratchH = tm.tmHeight + 16;
 
         var bmi = new Win32.BITMAPINFO
@@ -126,15 +170,31 @@ public sealed unsafe class Font : IDisposable
                 biCompression = Win32.BI_RGB,
             }
         };
+
+        IntPtr old = _hbmp;
         _hbmp = Win32.CreateDIBSection(_hdc, ref bmi, Win32.DIB_RGB_COLORS, out IntPtr bits, IntPtr.Zero, 0);
         Win32.SelectObject(_hdc, _hbmp);
+        if (old != IntPtr.Zero) Win32.DeleteObject(old);
         _bits = (uint*)bits;
+    }
 
-        All.Add(this);
+    /// <summary>Bakes the face again at the current device size.</summary>
+    void RebuildForDevice()
+    {
+        IntPtr old = _hfont;
+        _hfont = CreateHFont();
+        Win32.SelectObject(_hdc, _hfont);
+        if (old != IntPtr.Zero) Win32.DeleteObject(old);
+
+        MeasureFace();
+
+        _glyphs.Clear();
+        _widths.Clear();
+        _atlasVersion = _atlas.Version;
     }
 
     IntPtr CreateHFont() => Win32.CreateFontW(
-        -PixelHeight, 0, 0, 0,
+        -DevicePixelHeight, 0, 0, 0,
         Bold ? Win32.FW_BOLD : Win32.FW_NORMAL,
         _italic ? 1u : 0u, 0, 0,
         Win32.DEFAULT_CHARSET,
@@ -275,7 +335,8 @@ public sealed unsafe class Font : IDisposable
         foreach (char c in text)
         {
             if (c == '\n' || c == '\r') continue;
-            w += GetGlyph(c).Advance + LetterSpacing;
+            // Advances are device pixels; letter spacing is a layout figure.
+            w += GetGlyph(c).Advance / _deviceScale + LetterSpacing;
         }
 
         // Keep the table bounded: UI labels are few, document lines are not.
@@ -295,7 +356,7 @@ public sealed unsafe class Font : IDisposable
         {
             char c = text[i];
             if (c == '\n' || c == '\r') continue;
-            w += GetGlyph(c).Advance + LetterSpacing;
+            w += GetGlyph(c).Advance / _deviceScale + LetterSpacing;
         }
         return w;
     }
@@ -402,6 +463,12 @@ public sealed unsafe class Font : IDisposable
         foreach (char c in text) GetGlyph(c);
         var texture = _atlas.Texture;
 
+        // Positions snap to whole device pixels rather than whole logical
+        // units: at 144 DPI a logical unit is a pixel and a half, and rounding
+        // to it would throw away the sharpness the bigger glyphs just bought.
+        float scale = _deviceScale;
+        float Snap(float v) => MathF.Round(v * scale) / scale;
+
         float pen = x;
         foreach (char c in text)
         {
@@ -410,10 +477,11 @@ public sealed unsafe class Font : IDisposable
             if (g.W > 0)
             {
                 r.DrawTexture(texture,
-                    new Rect(MathF.Round(pen + g.BearingX), MathF.Round(y + g.BearingY), g.W, g.H),
+                    new Rect(Snap(pen + g.BearingX / scale), Snap(y + g.BearingY / scale),
+                             g.W / scale, g.H / scale),
                     g.U0, g.V0, g.U1, g.V1, color);
             }
-            pen += g.Advance + LetterSpacing;
+            pen += g.Advance / scale + LetterSpacing;
         }
         return pen;
     }

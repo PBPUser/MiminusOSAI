@@ -9,14 +9,14 @@
 # считается комментарием. Ключ с суффиксом .en используется, когда интерфейс
 # переключён на английский язык.
 
-version   = 7.2
-name      = МИМИНУС ОС 7.2
-name.en   = MIMINUS OS 7.2
-codename  = Наш ответ BOLGENOS, Service Pack 2
-codename.en = Our answer to BOLGENOS, Service Pack 2
+version   = 7.3
+name      = МИМИНУС ОС 7.3
+name.en   = MIMINUS OS 7.3
+codename  = Наш ответ BOLGENOS, Service Pack 3
+codename.en = Our answer to BOLGENOS, Service Pack 3
 released  = 2026-09-07
-size      = 421 КБ
-size.en   = 421 KB
+size      = 441 КБ
+size.en   = 441 KB
 
 # Страница проекта, показываемая в центре обновления.
 url       = https://github.com/PBPUser/MiminusOSAI
@@ -26,10 +26,18 @@ download  = https://github.com/PBPUser/MiminusOSAI/archive/refs/heads/main.zip
 
 # Собранный пакет, который центр обновления скачивает и устанавливает сам.
 # Контрольная сумма обязательна: без неё пакет будет отклонён.
-package   = https://raw.githubusercontent.com/PBPUser/MiminusOSAI/main/dist/MiminusOS-7.2.zip
-sha256    = 88885E437F1CC1675E41330A595DF1B3E597C856056873903F0B42B83F2349AB
+package   = https://raw.githubusercontent.com/PBPUser/MiminusOSAI/main/dist/MiminusOS-7.3.zip
+sha256    = 2BD4C7ED63C675F35C7D75CDB5034ED845AED484C6EBD006A3F24C5119101524
 
-notes     = Добавлено: центр обновления устанавливает обновления сам — загрузка, проверка контрольной суммы, распаковка и перезапуск.
+notes     = Добавлено: при первом запуске система задаёт вопросы — язык, имя и оформление.
+Добавлено: экран входа встречает песней, темп которой меняется каждые пару тактов.
+Добавлено: настройки сохраняются в settings.txt и переживают обновление.
+Добавлено: перетаскивание файлов между рабочим столом и папками.
+Добавлено: регулятор громкости по щелчку на динамике в трее.
+Добавлено: своей программой считается любая библиотека в папке apps.
+Добавлено: синий экран с настоящими сведениями об исключении.
+Изменено: масштаб DPI растрирует шрифты заново, а не растягивает их.
+Изменено: папка Windows удаляется нажатием Ctrl — без Delete и без вопросов.
 Добавлено: переименование папок и файлов на месте (F2).
 Добавлено: свойства панели задач — закрепление, автоскрытие, группировка кнопок, быстрый запуск, часы.
 Добавлено: клавиша Windows и сочетания с ней.
@@ -37,7 +45,15 @@ notes     = Добавлено: центр обновления устанавл
 Добавлено: после обновления система показывает презентацию «Что нового».
 Добавлено: произношение и склонение «Михаил Гревцов» во «Всё в одном».
 Изменено: библиотеки программ загружаются по требованию и выгружаются, когда не нужны.
-notes.en  = Added: the update centre installs updates itself — download, checksum, unpack, restart.
+notes.en  = Added: on a first start the system asks for a language, a name and an appearance.
+Added: the logon screen has a song whose tempo changes every couple of bars.
+Added: settings are kept in settings.txt and survive an update.
+Added: dragging files between the desktop and folder windows.
+Added: a volume control on the tray speaker.
+Added: any library in the apps folder counts as a program.
+Added: a blue screen carrying the real exception details.
+Changed: the DPI scale rasterises fonts again rather than stretching them.
+Changed: the Windows folder goes on Ctrl alone — no Delete, no questions.
 Added: renaming folders and files in place (F2).
 Added: taskbar properties — locking, auto-hide, button grouping, quick launch, clock.
 Added: the Windows key and its combinations.

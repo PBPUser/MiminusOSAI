@@ -53,7 +53,7 @@ public sealed class UpdateService
     public const string ManifestFile = "latest.txt";
 
     /// <summary>The version this build reports as installed.</summary>
-    public const string InstalledVersion = "7.2";
+    public const string InstalledVersion = "7.3";
 
     public static string RepositoryUrl => "https://github.com/" + Repository;
 
@@ -288,13 +288,19 @@ public sealed class UpdateService
                 rem Written by the МИМИНУС update centre. Safe to delete.
                 setlocal
 
-                rem Wait for the OS to close.
+                rem Wait for the OS to close. The process is matched by name as
+                rem well as by number: Windows reuses process ids, and a script
+                rem left behind by an abandoned update would otherwise wake up
+                rem months later, copy an old build over a new one and start it.
+                set WAITED=0
                 :wait
-                tasklist /FI "PID eq {pid}" | find "{pid}" >nul
-                if not errorlevel 1 (
-                    ping -n 2 127.0.0.1 >nul
-                    goto wait
-                )
+                tasklist /FI "IMAGENAME eq MiminusOS.exe" /FI "PID eq {pid}" | find "{pid}" >nul
+                if errorlevel 1 goto gone
+                set /a WAITED=%WAITED%+1
+                if %WAITED% GEQ 60 goto done
+                ping -n 2 127.0.0.1 >nul
+                goto wait
+                :gone
 
                 rem Windows can hold a file open for a moment after the process
                 rem that owned it is gone, so the copy waits, and retries a few

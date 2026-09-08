@@ -6,7 +6,7 @@ using Miminus.UI;
 
 namespace Miminus.Shell;
 
-public enum ShellPhase { Post, Booting, Welcome, Running, LoggingOff, ShuttingDown, PoweredOff, Stopped }
+public enum ShellPhase { Setup, Post, Booting, Welcome, Running, LoggingOff, ShuttingDown, PoweredOff, Stopped }
 
 /// <summary>The operating system itself: boot sequence, desktop, taskbar, the
 /// window manager and the program launcher.
@@ -43,7 +43,13 @@ public sealed class ShellHost : IDisposable
     public Theme Theme { get; private set; } = Theme.LunaBlue();
     public ThemeId ThemeId => Theme.Id;
 
-    public ShellPhase Phase { get; private set; } = ShellPhase.Post;
+    // A machine that has run this before starts at POST; one that has not is
+    // set up first.
+    public ShellPhase Phase { get; private set; } =
+        FirstRun.NeverRun ? ShellPhase.Setup : ShellPhase.Post;
+
+    /// <summary>The out-of-box questions, live only on a first run.</summary>
+    public readonly Setup Setup;
 
     /// <summary>Clock shown in the tray. Runs on real time but starts at the
     /// timestamp stamped on the files in the reference videos.</summary>
@@ -70,6 +76,7 @@ public sealed class ShellHost : IDisposable
         Wm.Shell = this;
         Desktop = new Desktop(this);
         Drag = new DragDropHost(this);
+        Setup = new Setup(this);
         Taskbar = new Taskbar(this);
         StartMenu = new StartMenu(this);
 
@@ -122,6 +129,7 @@ public sealed class ShellHost : IDisposable
 
         switch (Phase)
         {
+            case ShellPhase.Setup: DrawSetup(c); break;
             case ShellPhase.Post: DrawPost(c); break;
             case ShellPhase.Booting: DrawBootSplash(c); break;
             case ShellPhase.Welcome: DrawWelcome(c); break;
@@ -140,9 +148,33 @@ public sealed class ShellHost : IDisposable
 
     void SetPhase(ShellPhase p, UiContext c)
     {
+        bool wasWelcome = Phase == ShellPhase.Welcome;
+
         Phase = p;
         _phaseStart = c.Time;
+
+        if (p == ShellPhase.Welcome) StartLogonMusic();
+        else if (wasWelcome) Audio.StopMusic();
     }
+
+    /// <summary>The logon screen has a song, which is where a system of this
+    /// era put one. It is synthesised the first time it is needed and kept, so
+    /// logging off and back on does not build it again.</summary>
+    void StartLogonMusic()
+    {
+        try
+        {
+            _logonSong ??= Chiptune.Welcome();
+            Audio.PlayMusic(_logonSong.Value.pcm, _logonSong.Value.rate);
+            Audio.SetMusicVolume(0.7f);
+        }
+        catch
+        {
+            // Without audio the welcome screen is simply quiet.
+        }
+    }
+
+    (short[] pcm, int rate)? _logonSong;
 
     double Elapsed(UiContext c) => c.Time - _phaseStart;
 
@@ -289,6 +321,20 @@ public sealed class ShellHost : IDisposable
 
     // ---- boot / shutdown screens ----------------------------------------
 
+    /// <summary>Runs the first-run questions. When they are answered the
+    /// machine starts for real, from POST, like any other start.</summary>
+    void DrawSetup(UiContext c)
+    {
+        if (!Setup.Draw(c)) return;
+
+        UserName = Setup.UserName;
+        SetPhase(ShellPhase.Post, c);
+        Audio.Play(Sfx.Logon, 0.8f);
+    }
+
+    /// <summary>Name the account goes by, chosen during setup.</summary>
+    public string UserName = "Admin";
+
     void DrawPost(UiContext c)
     {
         c.R.Clear(Color.Black);
@@ -397,7 +443,7 @@ public sealed class ShellHost : IDisposable
         c.R.FillCircle(pic.CenterX, pic.Bottom + 4, 20, Color.Rgb(0x3C82C8));
         c.R.PopClip();
 
-        c.F.Big.Draw(c.R, "Admin", pic.Right + 14, tile.Y + 6, Color.White);
+        c.F.Big.Draw(c.R, UserName, pic.Right + 14, tile.Y + 6, Color.White);
         c.F.Ui.Draw(c.R, L.T("shell.click_to_log_on"),
                     pic.Right + 16, tile.Y + 6 + c.F.Big.Height + 2, Color.Rgba(0xFFFFFF, 200));
 

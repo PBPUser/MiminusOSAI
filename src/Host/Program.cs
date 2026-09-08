@@ -25,12 +25,18 @@ internal static class Program
             using var renderer = new Renderer2D();
             using var fonts = new Fonts();
             using var audio = new AudioEngine();
+
+            // Whether this machine has ever run the system, and whether this
+            // build replaced an older one, decide where the shell starts — so
+            // the record is read before the shell is made.
+            FirstRun.Check();
+
             using var shell = new ShellHost(audio);
 
             // Programs live in apps/ next to the executable, one DLL each.
-            // Whether this build has replaced an older one decides if the
-            // "what is new" tour appears; it is read before the first frame.
-            FirstRun.Check();
+            // What the user chose last time, before any switch is applied: a
+            // switch on the command line is meant to win over a stored value.
+            SettingsStore.Load(shell, fonts);
 
             shell.LoadPrograms(Path.Combine(AppContext.BaseDirectory, "apps"));
             if (opts.UpdateUrl != null) shell.Updates.Source = opts.UpdateUrl;
@@ -173,19 +179,25 @@ internal static class Program
                     break;
                 }
 
+                // The DPI setting scales the whole picture; the pointer and the
+                // layout have to work in the same coordinates it produces, and
+                // the size is needed before the first window opens rather than
+                // after the first frame has been drawn.
+                float scale = shell.Settings.Scale;
+                window.Input.PointerScale = scale;
+
                 ctx.Time = now;
                 ctx.Dt = dt;
-                ctx.ScreenW = renderer.ScreenW;
-                ctx.ScreenH = renderer.ScreenH;
+                ctx.ScreenW = (int)MathF.Round(window.Width / scale);
+                ctx.ScreenH = (int)MathF.Round(window.Height / scale);
                 ctx.MouseHandled = false;
                 ctx.KeyboardHandled = false;
                 ctx.TooltipText = null;
                 ctx.Cursor = CursorShape.Arrow;
 
-                // The DPI setting scales the whole picture; the pointer has to
-                // arrive in the same coordinates the UI is laid out in.
-                float scale = shell.Settings.Scale;
-                window.Input.PointerScale = scale;
+                // Glyphs are baked at the device size so the larger text is
+                // sharper, not merely bigger.
+                Font.DeviceScale = scale;
                 renderer.ColorLevels = shell.Settings.ColorLevels;
 
                 renderer.Begin(window.Width, window.Height, scale);
@@ -205,6 +217,9 @@ internal static class Program
                 // The update centre has staged a new build and the installer is
                 // waiting for this process to end.
                 if (shell.ExitRequested) break;
+
+                // Anything the user changed is on disk a second later.
+                SettingsStore.Poll(shell, ctx.Time);
 
                 if (pendingOpen)
                 {
@@ -252,6 +267,9 @@ internal static class Program
                     if (sleep > 1) Thread.Sleep(sleep);
                 }
             }
+
+            // The last change before the window closed still gets written.
+            SettingsStore.Flush(shell);
 
             return 0;
         }

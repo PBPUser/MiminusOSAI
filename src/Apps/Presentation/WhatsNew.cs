@@ -25,19 +25,20 @@ public sealed class WhatsNewWindow : OsWindow
     /// text is looked up so the tour follows the interface language.</summary>
     readonly record struct Card(string TitleKey, string BodyKey, Art Art);
 
-    enum Art { Cover, Update, Rename, Taskbar, WinKey, WindowsFolder, Speech, Lazy, Done }
+    enum Art { Cover, Setup, Settings, Dpi, DragDrop, Volume, Custom, Stop, WindowsFolder, Done }
 
     static readonly Card[] Cards =
     {
-        new("whatsnew.cover_title",   "whatsnew.cover_body",   Art.Cover),
-        new("whatsnew.update_title",  "whatsnew.update_body",  Art.Update),
-        new("whatsnew.rename_title",  "whatsnew.rename_body",  Art.Rename),
-        new("whatsnew.taskbar_title", "whatsnew.taskbar_body", Art.Taskbar),
-        new("whatsnew.winkey_title",  "whatsnew.winkey_body",  Art.WinKey),
-        new("whatsnew.folder_title",  "whatsnew.folder_body",  Art.WindowsFolder),
-        new("whatsnew.speech_title",  "whatsnew.speech_body",  Art.Speech),
-        new("whatsnew.lazy_title",    "whatsnew.lazy_body",    Art.Lazy),
-        new("whatsnew.done_title",    "whatsnew.done_body",    Art.Done),
+        new("whatsnew.cover_title",    "whatsnew.cover_body",    Art.Cover),
+        new("whatsnew.setup_title",    "whatsnew.setup_body",    Art.Setup),
+        new("whatsnew.settings_title", "whatsnew.settings_body", Art.Settings),
+        new("whatsnew.dpi_title",      "whatsnew.dpi_body",      Art.Dpi),
+        new("whatsnew.dnd_title",      "whatsnew.dnd_body",      Art.DragDrop),
+        new("whatsnew.volume_title",   "whatsnew.volume_body",   Art.Volume),
+        new("whatsnew.custom_title",   "whatsnew.custom_body",   Art.Custom),
+        new("whatsnew.stop_title",     "whatsnew.stop_body",     Art.Stop),
+        new("whatsnew.folder_title",   "whatsnew.folder_body",   Art.WindowsFolder),
+        new("whatsnew.done_title",     "whatsnew.done_body",     Art.Done),
     };
 
     public override string Title => L.T("whatsnew.title");
@@ -165,13 +166,14 @@ public sealed class WhatsNewWindow : OsWindow
         switch (art)
         {
             case Art.Cover: DrawCover(c, box); break;
-            case Art.Update: DrawUpdateArt(c, box); break;
-            case Art.Rename: DrawRenameArt(c, box); break;
-            case Art.Taskbar: DrawTaskbarArt(c, box); break;
-            case Art.WinKey: DrawWinKeyArt(c, box); break;
+            case Art.Setup: DrawSetupArt(c, box); break;
+            case Art.Settings: DrawSettingsArt(c, box); break;
+            case Art.Dpi: DrawDpiArt(c, box); break;
+            case Art.DragDrop: DrawDragArt(c, box); break;
+            case Art.Volume: DrawVolumeArt(c, box); break;
+            case Art.Custom: DrawCustomArt(c, box); break;
+            case Art.Stop: DrawStopArt(c, box); break;
             case Art.WindowsFolder: DrawFolderArt(c, box); break;
-            case Art.Speech: DrawSpeechArt(c, box); break;
-            case Art.Lazy: DrawLazyArt(c, box); break;
             default: DrawDoneArt(c, box); break;
         }
     }
@@ -198,108 +200,209 @@ public sealed class WhatsNewWindow : OsWindow
                             new Rect(box.X, y, box.W, c.F.Ui.Height), Color.Rgb(0x806000));
     }
 
-    void DrawUpdateArt(UiContext c, Rect box)
+    void DrawSetupArt(UiContext c, Rect box)
     {
         var t = c.Theme;
-        Icons.Draw(c.R, IconId.Shield, new Rect(box.X + 8, box.CenterY - 24, 48, 48));
 
-        // The four steps of the cycle, with the third one running.
+        // The setup screen in miniature, in its own blue.
+        var screen = box.Deflate(6);
+        c.R.FillRectV(new Rect(screen.X, screen.Y, screen.W, screen.H * 0.5f),
+                      Color.Rgb(0x2E6FC4), Color.Rgb(0x14477E));
+        c.R.FillRectV(new Rect(screen.X, screen.CenterY, screen.W, screen.H * 0.5f),
+                      Color.Rgb(0x14477E), Color.Rgb(0x07203F));
+        c.R.DrawRect(screen, t.FieldBorder);
+
+        // The step list down the left, with the second one lit.
         string[] steps =
         {
-            "whatsnew.step_download", "whatsnew.step_verify",
-            "whatsnew.step_unpack", "whatsnew.step_restart",
+            "setup.step_welcome", "setup.step_language",
+            "setup.step_name", "setup.step_look", "setup.step_ready",
         };
 
-        float x = box.X + 72;
-        float w = (box.W - 80) / steps.Length;
+        float y = screen.Y + 16;
         for (int i = 0; i < steps.Length; i++)
         {
-            var cell = new Rect(x + i * w, box.CenterY - 26, w - 8, 52);
-            bool done = i < 3;
-            c.R.RoundedRect(cell, 3, done ? t.Accent.WithAlpha(40) : t.Face, t.ControlBorder, 1);
-            c.F.Small.DrawCentered(c.R, L.T(steps[i]),
-                                   new Rect(cell.X, cell.Y + 8, cell.W, 16), t.Text);
-            W.ProgressBar(c, new Rect(cell.X + 8, cell.Y + 28, cell.W - 16, 10), done ? 1 : 0.35f);
+            bool current = i == 1;
+            c.R.FillRect(new Rect(screen.X + 14, y + 3, 6, 6),
+                         current ? Color.White : Color.Rgba(0xFFFFFF, 70));
+            c.F.Small.Draw(c.R, L.T(steps[i]), screen.X + 26, y,
+                           current ? Color.White : Color.Rgba(0xFFFFFF, 110));
+            y += c.F.Small.Height + 6;
+        }
+
+        float x = screen.X + 130;
+        c.F.UiBold.Draw(c.R, L.T("setup.language_heading"), x, screen.Y + 16, Color.White);
+
+        // The two answers it is waiting for.
+        float ry = screen.Y + 20 + c.F.UiBold.Height + 8;
+        foreach (var (label, picked) in new[] { ("Русский", true), ("English", false) })
+        {
+            var row = new Rect(x, ry, screen.Right - x - 16, 22);
+            if (picked) c.R.FillRect(row, Color.Rgba(0xFFFFFF, 45));
+            c.R.FillCircle(row.X + 9, row.CenterY, 5, Color.White);
+            if (picked) c.R.FillCircle(row.X + 9, row.CenterY, 2.5f, Color.Rgb(0x1B5FAF));
+            c.F.Small.Draw(c.R, label, row.X + 20, row.CenterY - c.F.Small.Height * 0.5f, Color.White);
+            ry += 26;
         }
     }
 
-    void DrawRenameArt(UiContext c, Rect box)
-    {
-        var t = c.Theme;
-        var icon = new Rect(box.CenterX - 24, box.Y + 12, 48, 48);
-        Icons.Draw(c.R, IconId.Folder, icon);
-
-        // The edit box, with the name selected the way it opens.
-        var field = new Rect(box.CenterX - 96, icon.Bottom + 12, 192, 24);
-        c.R.FillRect(field, t.FieldBack);
-        c.R.DrawRect(field, t.ControlBorderHot);
-
-        string name = L.T("whatsnew.rename_example");
-        float w = c.F.Ui.Measure(name);
-        c.R.FillRect(new Rect(field.X + 5, field.Y + 3, w, field.H - 6), t.Selection);
-        c.F.Ui.Draw(c.R, name, field.X + 5, field.CenterY - c.F.Ui.Height * 0.5f, t.SelectionText);
-
-        c.F.Small.DrawCentered(c.R, L.T("whatsnew.rename_hint"),
-                               new Rect(box.X, field.Bottom + 10, box.W, 18), t.TextDisabled);
-    }
-
-    void DrawTaskbarArt(UiContext c, Rect box)
+    void DrawSettingsArt(UiContext c, Rect box)
     {
         var t = c.Theme;
 
-        // A taskbar, and above it the space an auto-hidden one gives back.
-        var free = new Rect(box.X, box.Y, box.W, box.H - 34);
-        c.R.FillRect(free, t.Face);
-        c.F.Small.DrawCentered(c.R, L.T("whatsnew.taskbar_space"),
-                               new Rect(free.X, free.CenterY - 8, free.W, 18), t.TextDisabled);
-        c.R.DrawRect(free, t.ControlBorder);
+        // The file itself, which is what the setting turns into.
+        var page = new Rect(box.X + 8, box.Y + 6, box.W - 16, box.H - 12);
+        c.R.FillRect(page, t.FieldBack);
+        c.R.DrawRect(page, t.FieldBorder);
 
-        var bar = new Rect(box.X, box.Bottom - 26, box.W, 26);
-        c.R.FillRectV(bar, t.TaskbarTop, t.TaskbarBottom);
+        c.F.MonoSmall.Draw(c.R, "settings.txt", page.X + 10, page.Y + 8, t.TextDisabled);
 
-        var start = new Rect(bar.X + 3, bar.Y + 3, 56, bar.H - 6);
-        c.R.RoundedRectV(start, 3, t.StartTop, t.StartBottom);
-        c.F.Small.DrawCentered(c.R, L.T("tbprops.start"), start, Color.White);
-
-        var grouped = new Rect(start.Right + 8, bar.Y + 3, 118, bar.H - 6);
-        c.R.RoundedRectV(grouped, 3, t.TaskButtonFace, t.TaskButtonFace.Shade(0.85f));
-        Icons.Draw(c.R, IconId.Notepad, new Rect(grouped.X + 4, grouped.CenterY - 7, 14, 14));
-        c.F.Small.Draw(c.R, "3  " + L.T("tbprops.preview_app"), grouped.X + 22,
-                       grouped.CenterY - c.F.Small.Height * 0.5f, t.TaskbarText);
-
-        var tray = new Rect(bar.Right - 62, bar.Y + 2, 60, bar.H - 4);
-        c.R.FillRectV(tray, t.TrayBack, t.TrayBack.Shade(0.85f));
-        c.F.Small.DrawRight(c.R, L.Time(_shell.Now),
-                            new Rect(tray.X, tray.Y, tray.W - 5, tray.H), t.TaskbarText);
-    }
-
-    void DrawWinKeyArt(UiContext c, Rect box)
-    {
-        var t = c.Theme;
-
-        // The key itself, and what it now opens.
-        var cap = new Rect(box.X + 10, box.CenterY - 26, 76, 52);
-        c.R.RoundedRectV(cap, 5, t.FaceLight, t.FaceDark, t.ControlBorder, 1);
-        c.R.RoundedRect(cap.Deflate(4), 3, t.Face, t.ControlBorder, 1);
-
-        // A four-pane window mark, drawn rather than written.
-        float s = 7, gx = cap.CenterX - s - 1, gy = cap.CenterY - s - 1;
-        for (int i = 0; i < 4; i++)
-            c.R.FillRect(new Rect(gx + (i % 2) * (s + 2), gy + (i / 2) * (s + 2), s, s), t.Accent);
-
-        var combos = new[]
+        (string key, string value)[] rows =
         {
-            ("Win", "whatsnew.combo_start"), ("Win+E", "whatsnew.combo_computer"),
-            ("Win+R", "whatsnew.combo_run"), ("Win+D", "whatsnew.combo_desktop"),
-            ("Win+U", "whatsnew.combo_update"),
+            ("theme", "LunaBlue"),
+            ("wallpaper", "MiminusYellow"),
+            ("dpi", "120"),
+            ("volume", "0.7"),
+            ("taskbar_autohide", "yes"),
         };
 
-        float y = box.Y + 6;
-        foreach (var (keys, key) in combos)
+        float y = page.Y + 10 + c.F.MonoSmall.Height + 6;
+        foreach (var (key, value) in rows)
         {
-            c.F.MonoSmall.Draw(c.R, keys, cap.Right + 20, y, t.Accent);
-            c.F.Small.Draw(c.R, L.T(key), cap.Right + 90, y, t.Text);
-            y += c.F.Small.Height + 8;
+            c.F.MonoSmall.Draw(c.R, key, page.X + 10, y, t.Text);
+            c.F.MonoSmall.Draw(c.R, "= " + value, page.X + 160, y, t.Accent);
+            y += c.F.MonoSmall.Height + 4;
+        }
+    }
+
+    void DrawDpiArt(UiContext c, Rect box)
+    {
+        var t = c.Theme;
+
+        // The same letter at both scales, with the point written under it.
+        c.F.Big.Draw(c.R, "Аа", box.X + 16, box.CenterY - c.F.Big.Height, t.Text);
+        c.F.Small.DrawCentered(c.R, "96 DPI",
+            new Rect(box.X + 8, box.CenterY + 8, 70, 16), t.TextDisabled);
+
+        c.F.Huge.Draw(c.R, "Аа", box.X + 110, box.CenterY - c.F.Huge.Height, t.Text);
+        c.F.Small.DrawCentered(c.R, "144 DPI",
+            new Rect(box.X + 100, box.CenterY + 8, 90, 16), t.TextDisabled);
+
+        var note = new Rect(box.X + 220, box.Y + 8, box.W - 228, box.H - 16);
+        foreach (string line in c.F.Small.Wrap(L.T("whatsnew.dpi_note"), note.W))
+        {
+            c.F.Small.Draw(c.R, line, note.X, note.Y, t.TextDisabled);
+            note.CutTop(c.F.Small.Height + 3);
+        }
+    }
+
+    void DrawDragArt(UiContext c, Rect box)
+    {
+        var t = c.Theme;
+
+        var from = new Rect(box.X + 10, box.CenterY - 24, 48, 48);
+        var to = new Rect(box.Right - 58, box.CenterY - 24, 48, 48);
+        Icons.Draw(c.R, IconId.Folder, from);
+        Icons.Draw(c.R, IconId.FolderOpen, to);
+
+        // The file in mid-air, on a dotted path between the two.
+        float y = box.CenterY;
+        for (float x = from.Right + 10; x < to.X - 12; x += 9)
+            c.R.FillRect(new Rect(x, y - 1, 4, 2), t.ControlBorder);
+
+        var carried = new Rect(box.CenterX - 8, y - 26, 16, 16);
+        Icons.Draw(c.R, IconId.TextFile, carried);
+
+        var ghost = new Rect(carried.X + 14, carried.Y + 12, 128, 20);
+        c.R.FillRect(ghost, t.TooltipBack);
+        c.R.DrawRect(ghost, t.TooltipBorder);
+        c.F.Small.Draw(c.R, L.T("whatsnew.dnd_ghost"), ghost.X + 5,
+                       ghost.CenterY - c.F.Small.Height * 0.5f, t.TooltipText);
+
+        c.R.DrawRect(to.Inflate(3), t.Selection);
+    }
+
+    void DrawVolumeArt(UiContext c, Rect box)
+    {
+        var t = c.Theme;
+
+        // The tray, the speaker, and the panel it drops.
+        var bar = new Rect(box.X, box.Bottom - 22, box.W, 22);
+        c.R.FillRectV(bar, t.TaskbarTop, t.TaskbarBottom);
+
+        var speaker = new Rect(box.CenterX - 8, bar.CenterY - 8, 16, 16);
+        Icons.Draw(c.R, IconId.Volume, speaker);
+
+        var panel = new Rect(box.CenterX - 37, box.Y + 6, 74, box.H - 34);
+        c.R.FillRect(panel.Offset(2, 2), Color.Rgba(0x000000, 40));
+        c.R.FillRect(panel, t.Face);
+        c.R.DrawRect(panel, t.MenuBorder);
+
+        c.F.Small.DrawCentered(c.R, L.T("tray.volume_label"),
+                               new Rect(panel.X, panel.Y + 5, panel.W, 16), t.Text);
+
+        var groove = new Rect(panel.CenterX - 2, panel.Y + 26, 4, panel.H - 60);
+        c.R.FillRect(groove, t.FaceDark);
+        c.R.DrawRect(groove, t.ControlBorder);
+
+        var thumb = new Rect(panel.CenterX - 6, groove.Y + groove.H * 0.3f, 12, 16);
+        c.R.RoundedRectV(thumb, 2, t.FaceLight, t.FaceDark, t.ControlBorder, 1);
+
+        c.F.Small.DrawCentered(c.R, "70%",
+                               new Rect(panel.X, groove.Bottom + 4, panel.W, 16), t.TextDisabled);
+    }
+
+    void DrawCustomArt(UiContext c, Rect box)
+    {
+        var t = c.Theme;
+
+        // A folder of programs, one of which came from outside.
+        var folder = new Rect(box.X + 12, box.CenterY - 20, 40, 40);
+        Icons.Draw(c.R, IconId.Folder, folder);
+        c.F.Small.DrawCentered(c.R, "apps",
+                               new Rect(folder.X - 8, folder.Bottom + 2, 56, 16), t.TextDisabled);
+
+        string[] names = { "Miminus.App.Paint.dll", "Miminus.App.Sheet.dll", "HelloProgram.dll" };
+        float y = box.Y + 14;
+        for (int i = 0; i < names.Length; i++)
+        {
+            bool mine = i == names.Length - 1;
+            var row = new Rect(folder.Right + 18, y, box.Right - folder.Right - 26, 26);
+            c.R.RoundedRect(row, 3, mine ? t.Accent.WithAlpha(50) : t.Face,
+                            mine ? t.Accent : t.ControlBorder, 1);
+            Icons.Draw(c.R, mine ? IconId.Star : IconId.Program,
+                       new Rect(row.X + 5, row.CenterY - 8, 16, 16));
+            c.F.MonoSmall.Draw(c.R, names[i], row.X + 26,
+                               row.CenterY - c.F.MonoSmall.Height * 0.5f, t.Text);
+            y += 32;
+        }
+    }
+
+    void DrawStopArt(UiContext c, Rect box)
+    {
+        // The screen itself, in miniature, in its own colours.
+        var screen = box.Deflate(box.W * 0.12f, 6, box.W * 0.12f, 6);
+        c.R.FillRect(screen, Color.Rgb(0x0000AA));
+
+        var font = c.F.MonoSmall;
+        float y = screen.Y + 10;
+        string[] lines =
+        {
+            L.T("bsod.title"),
+            "",
+            BlueScreen.StopCode,
+            "",
+            "*** STOP: " + BlueScreen.StopCode,
+            "    System.InvalidOperationException",
+            "",
+            L.F("bsod.dumping_memory", 60),
+        };
+
+        foreach (string line in lines)
+        {
+            if (line.Length > 0)
+                font.Draw(c.R, line, screen.X + 12, y, Color.White);
+            y += font.Height + 1;
         }
     }
 
@@ -321,48 +424,6 @@ public sealed class WhatsNewWindow : OsWindow
 
         c.F.Small.DrawCentered(c.R, L.T("fs.windows_deleted_short"),
                                new Rect(box.X, cap.Bottom + 12, box.W, 18), t.TextDisabled);
-    }
-
-    void DrawSpeechArt(UiContext c, Rect box)
-    {
-        var t = c.Theme;
-
-        Icons.Draw(c.R, IconId.Volume, new Rect(box.X + 12, box.CenterY - 20, 40, 40));
-
-        // Sound leaving the speaker: three arcs of growing width.
-        for (int i = 1; i <= 3; i++)
-            c.R.FillRect(new Rect(box.X + 56 + i * 7, box.CenterY - 3 * i, 3, 6 * i),
-                         t.Accent.WithAlpha((byte)(200 - i * 40)));
-
-        float x = box.X + 96;
-        c.F.Big.Draw(c.R, "МихаИл ГревцОв", x, box.Y + 22, t.Text);
-        c.F.Ui.Draw(c.R, "[михаИл грефцОф]", x, box.Y + 26 + c.F.Big.Height, t.TextDisabled);
-        c.F.Small.Draw(c.R, L.T("whatsnew.speech_cases"), x,
-                       box.Y + 34 + c.F.Big.Height + c.F.Ui.Height, t.TextDisabled);
-    }
-
-    void DrawLazyArt(UiContext c, Rect box)
-    {
-        var t = c.Theme;
-
-        // Twelve libraries; the two in use are filled in.
-        const int Total = 12, Loaded = 2;
-        float w = (box.W - 16) / 6, h = 34;
-
-        for (int i = 0; i < Total; i++)
-        {
-            var cell = new Rect(box.X + (i % 6) * w, box.Y + 8 + (i / 6) * (h + 10), w - 10, h);
-            bool loaded = i < Loaded;
-            c.R.RoundedRect(cell, 3, loaded ? t.Accent.WithAlpha(60) : t.Face,
-                            loaded ? t.Accent : t.ControlBorder, 1);
-            Icons.Draw(c.R, IconId.Program, new Rect(cell.X + 6, cell.CenterY - 9, 18, 18));
-            c.F.Small.Draw(c.R, loaded ? L.T("sys.apps_loaded") : L.T("sys.apps_unloaded"),
-                           cell.X + 28, cell.CenterY - c.F.Small.Height * 0.5f,
-                           loaded ? t.Text : t.TextDisabled);
-        }
-
-        c.F.Small.DrawCentered(c.R, L.F("sys.apps_summary", Loaded, _shell.Programs.Count),
-                               new Rect(box.X, box.Bottom - 20, box.W, 18), t.TextDisabled);
     }
 
     void DrawDoneArt(UiContext c, Rect box)

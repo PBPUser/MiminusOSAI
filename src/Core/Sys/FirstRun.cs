@@ -19,6 +19,10 @@ public static class FirstRun
     /// has been updated since it last ran, and has something to show for it.</summary>
     public static bool JustUpdated { get; private set; }
 
+    /// <summary>True when the system has never run here at all, which is when
+    /// setup asks its questions.</summary>
+    public static bool NeverRun { get; private set; }
+
     /// <summary>Set once the presentation has been shown, so it appears a
     /// single time even if the state file could not be written.</summary>
     public static bool Announced;
@@ -46,6 +50,7 @@ public static class FirstRun
             // Unreadable state is the same as no state: nothing is announced.
         }
 
+        NeverRun = PreviousVersion == null;
         JustUpdated = PreviousVersion != null &&
                       UpdateService.IsNewer(UpdateService.InstalledVersion, PreviousVersion);
 

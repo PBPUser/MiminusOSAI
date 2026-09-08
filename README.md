@@ -75,9 +75,12 @@ dotnet run --project src/Host -- --theme=seven --wallpaper=seven --lang=en
 
 ## What is in it
 
-**Boot** — fake POST that fails to detect BOLGENOS, a splash with marching
-progress blocks, an XP-style welcome screen, and a shutdown that ends on "it is
-now safe to turn off your computer".
+**Boot** — on a machine that has never run it, setup asks five questions first:
+language, name, appearance. After that, every start is a fake POST that fails to
+detect BOLGENOS, a splash with marching progress blocks, and an XP-style welcome
+screen — which has a song, synthesised at boot from the same oscillators as the
+rest of the sound, whose tempo changes every couple of bars. Shutdown ends on
+"it is now safe to turn off your computer".
 
 **Stopping** — anything that escapes a frame takes the system down on its own
 blue screen: an invented stop code over the real exception type, message and the
@@ -136,10 +139,18 @@ cascade and tile, and per-theme chrome.
 | Что нового | the tour the system shows itself the first time it starts after an update — nine cards, each illustration built from the same icons and rectangles as the rest of the OS. |
 | | plus Task Manager, Control Panel, Sound properties, Properties sheets, Open With, Run, About, Распознавание голоса (which listens, thinks, and admits it is unfinished). |
 
-**Display** — the settings are not decoration. DPI scales the whole picture (96,
-120 or 144), the refresh rate on the Monitor sheet really caps the frame rate,
-and colour quality really reduces the colour: at 16-bit the shader snaps every
-channel to 32 levels and the title-bar gradients band.
+**Display** — the settings are not decoration. The refresh rate on the Monitor
+sheet really caps the frame rate, and colour quality really reduces the colour:
+at 16-bit the shader snaps every channel to 32 levels and the title-bar
+gradients band. DPI (96, 120 or 144) scales the layout *and* re-rasterises the
+text: glyphs are baked into the atlas at the device size and drawn in logical
+units, so at 144 DPI an 11-pixel Tahoma is built from 16 real pixels rather than
+stretched from 11.
+
+**Settings are kept** — theme, wallpaper, language, volume, scale, refresh,
+smoothing and every taskbar switch live in `settings.txt` beside the executable,
+written whenever something changes. It is plain `key = value` text, and it is
+not part of an update package, so it survives one.
 
 **Themes** — XP Luna in blue, olive and silver, a Windows-7 pastiche for
 «Миминус 7», and Windows Classic. Twelve procedurally generated wallpapers.
